@@ -1,18 +1,31 @@
 #!/usr/bin/env -S vala -X -lm -X -O2 -X -march=native --cc="ccache cc" -X -pipe -X -fuse-ld=mold
 
+/**
+ * Computes solar declination (in degrees) based on the day of the year.
+ *
+ * Formula: δ = 23.44° * sin(2π/365 * (n - 81))
+ *
+ * @param n The day number in the year.
+ * @return Solar declination in degrees.
+ */
 double solar_declination (int n) {
-    /* Calculate solar declination (in degrees) based on the day of year n
-     * Formula: δ = 23.44° * sin(2π/365 * (n - 81))
-    */
     return 23.44 * Math.sin (2 * Math.PI / 365.0 * (n - 81));
 }
 
+/**
+ * Calculates the day length (in hours) for a given latitude and date.
+ *
+ * Using formula: T = (2/15) * arccos( -tan(φ) * tan(δ) )
+ *
+ * φ: observer's latitude, δ: solar declination
+ *
+ * When |tan φ * tan δ| > 1, returns polar day (24 hours) or polar night (0 hours)
+ *
+ * @param latitude Geographic latitude in degrees.
+ * @param date_obj DateTime object representing the date.
+ * @return Day length in hours.
+ */
 double day_length (double latitude, DateTime date_obj) {
-    /* Calculate day length (in hours) based on latitude (in degrees) and date
-     * Using formula: T = (2/15) * arccos( -tan(φ) * tan(δ) )
-     * φ: observer's latitude, δ: solar declination
-     * When |tan φ * tan δ| > 1, returns polar day (24 hours) or polar night (0 hours)
-    */
     double phi = latitude * Math.PI / 180.0; // Convert to radians
     int n = date_obj.get_day_of_year (); // nth day of the year
     double delta_deg = solar_declination (n);
@@ -31,6 +44,11 @@ double day_length (double latitude, DateTime date_obj) {
     }
 }
 
+/**
+ * Main entry point.
+ * @param args Command line arguments.
+ * @return Exit status code.
+ */
 int main (string[] args) {
     Intl.setlocale ();
     // Define and parse command line arguments
@@ -69,7 +87,11 @@ int main (string[] args) {
     }
 
     double T = day_length (latitude, date_obj);
-    stdout.printf ("On %s, at latitude %.2f°, the daylight duration is approximately %.2f hours\n",
-                   date_obj.format ("%Y-%m-%d"), latitude, T);
+    stdout.printf (
+        "%s  |  Latitude: %.2f deg  |  Daylight: %.2f hours\n",
+        date_obj.format ("%Y-%m-%d"),
+        latitude,
+        T
+    );
     return 0;
 }
