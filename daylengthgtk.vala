@@ -2,31 +2,55 @@
 
 // Helper functions to compute day-of-year, solar declination and day length
 
-// Returns the number of days in a given year.
+/**
+ * Returns the number of days in a given year.
+ *
+ * @param year The year to calculate the number of days.
+ * @return Total number of days in the year.
+ */
 private inline int days_in_year (int year) {
     // Leap year: divisible by 400 or divisible by 4 but not by 100.
-    if ((year % 400 == 0) || ((year % 4 == 0) && (year % 100 != 0)))
+    if ((year % 400 == 0) || ((year % 4 == 0) && (year % 100 != 0))) {
         return 366;
+    }
     return 365;
 }
 
-// Compute solar declination (in degrees) using the approximate formula:
-// δ = 23.44 * sin(2π/365 * (n - 81))
+/**
+ * Computes solar declination in degrees using an approximate formula.
+ *
+ * Formula: δ (deg) = 23.44 * sin(2π/365 * (n - 81))
+ *
+ * @param n The day number in the year.
+ * @return Solar declination in degrees.
+ */
 private inline double solar_declination (int n) {
     return 23.44 * Math.sin (2 * Math.PI / 365.0 * (n - 81));
 }
 
-// Compute day length (in hours) for a given latitude (in degrees) and day number n.
+/**
+ * Calculates the day length (in hours) for a given latitude and day number.
+ *
+ * Using formula: T = (2/15) * arccos( -tan(φ) * tan(δ) )
+ *
+ * φ: observer's latitude, δ: solar declination
+ *
+ * When |tan φ * tan δ| > 1, returns polar day (24 hours) or polar night (0 hours)
+ *
+ * @param latitude Latitude in degrees.
+ * @param n The day number in the year.
+ * @return Day length in hours.
+ */
 private inline double compute_day_length (double latitude, int n) {
     double phi = latitude * Math.PI / 180.0; // Convert to radians
     double delta_deg = solar_declination (n);
     double delta = delta_deg * Math.PI / 180.0; // Convert to radians
     double X = -Math.tan (phi) * Math.tan (delta);
-    if (X < -1)
+    if (X < -1) {
         return 24.0; // Polar day
-    else if (X > 1)
+    } else if (X > 1) {
         return 0.0;  // Polar night
-    else {
+    } else {
         double omega0 = Math.acos (X); // in radians
         double omega0_deg = omega0 * 180.0 / Math.PI;
         double T = 2 * (omega0_deg / 15.0); // 15° per hour
@@ -34,7 +58,13 @@ private inline double compute_day_length (double latitude, int n) {
     }
 }
 
-// Generate an array of day lengths for all days in the given year, at the given latitude.
+/**
+ * Generates an array of day lengths for all days at the given latitude and year.
+ *
+ * @param latitude Latitude in degrees.
+ * @param year The year for which to generate day lengths.
+ * @return Array of day lengths in hours.
+ */
 private inline double[] generate_day_lengths (double latitude, int year) {
     int total_days = days_in_year (year);
     double[] lengths = new double[total_days];
@@ -44,7 +74,9 @@ private inline double[] generate_day_lengths (double latitude, int year) {
     return lengths;
 }
 
-// The main application window, derived from Gtk.ApplicationWindow.
+/**
+ * Window for displaying the day length plot.
+ */
 public class DayLengthWindow : Gtk.ApplicationWindow {
     private Gtk.Entry latitude_entry;
     private Gtk.Entry year_entry;
@@ -53,6 +85,11 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
     private int current_year;
     private double current_latitude;
 
+    /**
+     * Constructs a new DayLengthWindow.
+     *
+     * @param app The Gtk.Application instance.
+     */
     public DayLengthWindow (Gtk.Application app) {
         Object (
             application: app,
@@ -118,24 +155,33 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         vbox.append (drawing_area);
     }
 
-    // Read input and calculate plot data
+    /**
+     * Updates plot data based on input values.
+     */
     private void update_plot_data () {
         current_latitude = double.parse (latitude_entry.text);
         current_year = int.parse (year_entry.text);
         day_lengths = generate_day_lengths (current_latitude, current_year);
     }
 
-    // Drawing callback: using Cairo to draw axes and plot line
+    /**
+     * Drawing callback to render the day length plot.
+     *
+     * @param area The drawing area widget.
+     * @param cr The Cairo context.
+     * @param width The width of the drawing area.
+     * @param height The height of the drawing area.
+     */
     private void draw_plot (Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
         // Clear background to white
         cr.set_source_rgb (1, 1, 1);
         cr.paint ();
 
         // Set margins
-        int margin_left = 60;
+        int margin_left = 70;
         int margin_right = 20;
         int margin_top = 40;
-        int margin_bottom = 60;
+        int margin_bottom = 70;
         int plot_width = width - margin_left - margin_right;
         int plot_height = height - margin_top - margin_bottom;
 
@@ -234,9 +280,10 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         cr.show_text (y_title);
         cr.restore ();
 
-        // Exit if no data
-        if (day_lengths == null)
+        // Return if no data
+        if (day_lengths == null) {
             return;
+        }
 
         // Draw data curve (red, bold)
         cr.set_source_rgb (1, 0, 0);
@@ -244,30 +291,46 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         for (int i = 0; i < total_days; i += 1) {
             double x = margin_left + (plot_width * (i / (double)(total_days - 1)));
             double y = margin_top + (plot_height * (1 - (day_lengths[i] - y_min) / (y_max - y_min)));
-            if (i == 0)
+            if (i == 0) {
                 cr.move_to (x, y);
-            else
+            } else {
                 cr.line_to (x, y);
+            }
         }
         cr.stroke ();
     }
 }
 
+/**
+ * Main application class for Day Length Plotter.
+ */
 public class DayLengthApp : Gtk.Application {
 
+    /**
+     * Constructs a new DayLengthApp.
+     */
     public DayLengthApp () {
         Object (
             application_id: "com.github.wszqkzqk.DayLengthApp",
-            flags: ApplicationFlags.FLAGS_NONE
+            flags: ApplicationFlags.DEFAULT_FLAGS
         );
     }
 
+    /**
+     * Activates the application.
+     */
     protected override void activate () {
         var win = new DayLengthWindow (this);
         win.present ();
     }
 }
 
+/**
+ * Main entry point.
+ *
+ * @param args Command line arguments.
+ * @return Exit status code.
+ */
 public static int main (string[] args) {
     var app = new DayLengthApp ();
     return app.run (args);
