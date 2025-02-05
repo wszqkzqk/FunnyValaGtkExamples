@@ -10,7 +10,7 @@
  */
 private inline int days_in_year (int year) {
     // Leap year: divisible by 400 or divisible by 4 but not by 100.
-    if ((year % 400 == 0) || ((year % 4 == 0) && (year % 100 != 0))) {
+    if ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))) {
         return 366;
     }
     return 365;
@@ -149,9 +149,7 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         drawing_area.hexpand = true;
         drawing_area.vexpand = true;
         // Register drawing callback
-        drawing_area.set_draw_func ((area, cr, width, height) => {
-            draw_plot (area, cr, width, height);
-        });
+        drawing_area.set_draw_func (this.draw_plot);
         vbox.append (drawing_area);
     }
 
@@ -190,7 +188,7 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         // X axis range: 1 to total_days
         int total_days = (day_lengths != null) ? day_lengths.length : 365;
 
-        // Draw grid lines (light gray)
+        // Draw grid lines (gray)
         cr.set_source_rgba (0.5, 0.5, 0.5, 0.5);
         cr.set_line_width (1.0);
         // Horizontal grid lines (every 3 hours)
