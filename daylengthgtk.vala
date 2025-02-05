@@ -1,4 +1,4 @@
-#!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -O2 -X -march=native --cc="ccache cc" -X -pipe -X -fuse-ld=mold
+#!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -pipe -X -O2 -X -march=native
 
 // Helper functions to compute day-of-year, solar declination and day length
 
