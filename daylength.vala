@@ -1,15 +1,15 @@
 #!/usr/bin/env -S vala -X -lm -X -pipe -X -O2 -X -march=native
 
 /**
- * Computes solar declination (in degrees) based on the day of the year.
+ * Computes solar declination in radians using an approximate formula.
  *
- * Formula: δ = 23.44° * sin(2π/365 * (n - 81))
+ * Formula: δ (rad) = (23.44 * π/180) * sin(2π/365 * (n - 81))
  *
  * @param n The day number in the year.
- * @return Solar declination in degrees.
+ * @return Solar declination in radians.
  */
-double solar_declination (int n) {
-    return 23.44 * Math.sin (2 * Math.PI / 365.0 * (n - 81));
+ private inline double solar_declination (int n) {
+    return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 81));
 }
 
 /**
@@ -25,11 +25,10 @@ double solar_declination (int n) {
  * @param date_obj DateTime object representing the date.
  * @return Day length in hours.
  */
-double day_length (double latitude, DateTime date_obj) {
-    double phi = latitude * Math.PI / 180.0; // Convert to radians
+double day_length (double latitude_rad, DateTime date_obj) {
+    double phi = latitude_rad;
     int n = date_obj.get_day_of_year (); // nth day of the year
-    double delta_deg = solar_declination (n);
-    double delta = delta_deg * Math.PI / 180.0; // Convert to radians
+    double delta = solar_declination (n);
 
     double X = - Math.tan (phi) * Math.tan (delta);
     if (X < -1) {
@@ -37,9 +36,11 @@ double day_length (double latitude, DateTime date_obj) {
     } else if (X > 1) {
         return 0.0;
     } else {
-        double omega0 = Math.acos (X);
-        double omega0_deg = omega0 * 180.0 / Math.PI;
-        double T = 2 * (omega0_deg / 15.0);
+        // 'omega0' is the half-angle (in radians) corresponding to the time from sunrise to solar noon.
+        // Since 2π radians represent 24 hours, 1 radian equals 24/(2π) hours.
+        // Multiplying omega0 by (24/Math.PI) converts this angle to the total day length in hours.
+        double omega0 = Math.acos (X); // computed in radians
+        double T = (24.0 / Math.PI) * omega0; // convert to hours
         return T;
     }
 }
@@ -52,10 +53,10 @@ double day_length (double latitude, DateTime date_obj) {
 int main (string[] args) {
     Intl.setlocale ();
     // Define and parse command line arguments
-    double latitude = 0; 
+    double latitude_deg = 0; 
     string? date_str = null;
     OptionEntry[] entries = {
-        { "latitude", 'l', OptionFlags.NONE, OptionArg.DOUBLE, out latitude,
+        { "latitude", 'l', OptionFlags.NONE, OptionArg.DOUBLE, out latitude_deg,
           "Geographic latitude of observation point (in degrees, positive for North, negative for South)", "latitude" },
         { "date", 'd', OptionFlags.NONE, OptionArg.STRING, out date_str,
           "Date (format: YYYY-MM-DD), defaults to today", "date" },
@@ -86,11 +87,12 @@ int main (string[] args) {
         }
     }
 
-    double T = day_length (latitude, date_obj);
+    double latitude_rad = latitude_deg * Math.PI / 180.0;
+    double T = day_length (latitude_rad, date_obj);
     stdout.printf (
         "%s  |  Latitude: %.2f deg  |  Daylight: %.2f hours\n",
         date_obj.format ("%Y-%m-%d"),
-        latitude,
+        latitude_deg,
         T
     );
     return 0;
