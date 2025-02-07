@@ -8,7 +8,7 @@
  * @param n The day number in the year.
  * @return Solar declination in radians.
  */
- private inline double solar_declination (int n) {
+private inline double solar_declination (int n) {
     return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 81));
 }
 
