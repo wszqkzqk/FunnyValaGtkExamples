@@ -154,20 +154,31 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         export_button = new Gtk.Button.with_label ("Export");
         grid.attach (export_button, 5, 0, 1, 1);
         export_button.clicked.connect (() => {
+            var png_filter = new Gtk.FileFilter ();
+            png_filter.name = "PNG Images";
+            png_filter.add_mime_type ("image/png");
+            
+            var svg_filter = new Gtk.FileFilter ();
+            svg_filter.name = "SVG Images";
+            svg_filter.add_mime_type ("image/svg+xml");
+
+            // FileDialog.filters are required to contain default filter and others
+            var filter_list = new ListStore (typeof (Gtk.FileFilter));
+            filter_list.append (png_filter);
+            filter_list.append (svg_filter);
+
             var file_dialog = new Gtk.FileDialog () {
                 modal = true,
                 initial_name = "daylength_plot.png",
-                default_filter = new Gtk.FileFilter () {
-                    name = "PNG Images"
-                }
+                filters = filter_list
             };
-            file_dialog.default_filter.add_mime_type ("image/png");
+
             file_dialog.save.begin (this, null, (obj, res) => {
                 try {
                     var file = file_dialog.save.end (res);
                     if (file != null) {
                         string filepath = file.get_path ();
-                        export_to_png (filepath);
+                        export_plot (filepath);
                     }
                 } catch (Error e) {
                     stderr.printf ("Error: %s\n", e.message);
@@ -346,16 +357,15 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
     }
 
     /**
-     * Exports the current day length plot to a PNG image file.
+     * Exports the current day length plot to an image file (PNG or SVG).
      *
      * This function gets the current width and height of the drawing area.
-     * If the dimensions are invalid, it defaults to 800x600.
-     * It then creates a Cairo image surface, draws the plot onto it,
-     * and writes the surface to a PNG file at the specified file path.
+     * If invalid, it defaults to 800x600.
+     * It then creates a Cairo surface (SVG or PNG) and draws the plot onto it.
      *
-     * @param filepath The destination file path for the exported PNG image.
+     * @param filepath The destination file path.
      */
-    private void export_to_png (string filepath) {
+    private void export_plot (string filepath) {
         int width = drawing_area.get_width ();
         int height = drawing_area.get_height ();
 
@@ -364,12 +374,16 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
             height = 600;
         }
 
-        Cairo.ImageSurface surface = new Cairo.ImageSurface (Cairo.Format.RGB24, width, height);
-        Cairo.Context cr = new Cairo.Context (surface);
-
-        draw_plot (drawing_area, cr, width, height);
-
-        surface.write_to_png (filepath);
+        if (filepath.down ().has_suffix (".svg")) {
+            Cairo.SvgSurface surface = new Cairo.SvgSurface (filepath, width, height);
+            Cairo.Context cr = new Cairo.Context (surface);
+            draw_plot (drawing_area, cr, width, height);
+        } else {
+            Cairo.ImageSurface surface = new Cairo.ImageSurface (Cairo.Format.RGB24, width, height);
+            Cairo.Context cr = new Cairo.Context (surface);
+            draw_plot (drawing_area, cr, width, height);
+            surface.write_to_png (filepath);
+        }
     }
 }
 
