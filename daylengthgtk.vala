@@ -162,10 +162,15 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
             svg_filter.name = "SVG Images";
             svg_filter.add_mime_type ("image/svg+xml");
 
+            var pdf_filter = new Gtk.FileFilter ();
+            pdf_filter.name = "PDF Documents";
+            pdf_filter.add_mime_type ("application/pdf");
+
             // FileDialog.filters are required to contain default filter and others
             var filter_list = new ListStore (typeof (Gtk.FileFilter));
             filter_list.append (png_filter);
             filter_list.append (svg_filter);
+            filter_list.append (pdf_filter);
 
             var file_dialog = new Gtk.FileDialog () {
                 modal = true,
@@ -374,8 +379,18 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
             height = 600;
         }
 
-        if (filepath.down ().has_suffix (".svg")) {
+        string? extension = null;
+        var last_dot = filepath.last_index_of_char ('.');
+        if (last_dot != -1) {
+            extension = filepath[last_dot:].down ();
+        }
+
+        if (extension == ".svg") {
             Cairo.SvgSurface surface = new Cairo.SvgSurface (filepath, width, height);
+            Cairo.Context cr = new Cairo.Context (surface);
+            draw_plot (drawing_area, cr, width, height);
+        } else if (extension == ".pdf") {
+            Cairo.PdfSurface surface = new Cairo.PdfSurface (filepath, width, height);
             Cairo.Context cr = new Cairo.Context (surface);
             draw_plot (drawing_area, cr, width, height);
         } else {
