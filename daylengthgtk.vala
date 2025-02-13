@@ -105,15 +105,12 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         current_year = now.get_year ();
 
         // Use vertical box as the main container
-        var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 10);
-        this.child = vbox;
+        var vbox_main = new Gtk.Box (Gtk.Orientation.VERTICAL, 10);
+        this.child = vbox_main;
 
-        // Input area (using Grid layout)
-        var grid = new Gtk.Grid () {
-            column_spacing = 10,
-            row_spacing = 10
-        };
-        vbox.append (grid);
+        // Input area (using horizontal Box layout)
+        var hbox_controls = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
+        vbox_main.append (hbox_controls);
 
         var lat_label = new Gtk.Label ("<b>Latitude (degrees):</b>") {
             margin_start = 5,
@@ -121,12 +118,12 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
             halign = Gtk.Align.START,
             use_markup = true
         };
-        grid.attach (lat_label, 0, 0, 1, 1);
+        hbox_controls.append (lat_label);
 
         latitude_entry = new Gtk.Entry () {
             width_chars = 10
         };
-        grid.attach (latitude_entry, 1, 0, 1, 1);
+        hbox_controls.append (latitude_entry);
 
         var year_label = new Gtk.Label ("<b>Year:</b>") {
             margin_start = 5,
@@ -134,17 +131,17 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
             halign = Gtk.Align.START,
             use_markup = true
         };
-        grid.attach (year_label, 2, 0, 1, 1);
+        hbox_controls.append (year_label);
 
         year_entry = new Gtk.Entry () {
             width_chars = 10,
             // Set year entry text using current_year
             text = current_year.to_string ()
         };
-        grid.attach (year_entry, 3, 0, 1, 1);
+        hbox_controls.append (year_entry);
 
         var plot_button = new Gtk.Button.with_label ("Plot");
-        grid.attach (plot_button, 4, 0, 1, 1);
+        hbox_controls.append (plot_button);
         plot_button.clicked.connect (() => {
             update_plot_data ();
             drawing_area.queue_draw ();
@@ -152,7 +149,7 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
 
         // Export image button
         export_button = new Gtk.Button.with_label ("Export");
-        grid.attach (export_button, 5, 0, 1, 1);
+        hbox_controls.append (export_button);
         export_button.clicked.connect (() => {
             var png_filter = new Gtk.FileFilter ();
             png_filter.name = "PNG Images";
@@ -199,7 +196,7 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         };
         // Register drawing callback
         drawing_area.set_draw_func (this.draw_plot);
-        vbox.append (drawing_area);
+        vbox_main.append (drawing_area);
     }
 
     /**
