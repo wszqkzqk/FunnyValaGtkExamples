@@ -105,16 +105,20 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         current_year = now.get_year ();
 
         // Use vertical box as the main container
-        var vbox_main = new Gtk.Box (Gtk.Orientation.VERTICAL, 10);
+        var vbox_main = new Gtk.Box (Gtk.Orientation.VERTICAL, 10) {
+            // Add top margin but do not add other margins since drawing area expands
+            margin_top = 10
+        };
         this.child = vbox_main;
 
         // Input area (using horizontal Box layout)
-        var hbox_controls = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
+        var hbox_controls = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10) {
+            margin_start = 10,
+            margin_end = 10
+        };
         vbox_main.append (hbox_controls);
 
         var lat_label = new Gtk.Label ("<b>Latitude (degrees):</b>") {
-            margin_start = 5,
-            margin_top = 5,
             halign = Gtk.Align.START,
             use_markup = true
         };
@@ -126,8 +130,6 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         hbox_controls.append (latitude_entry);
 
         var year_label = new Gtk.Label ("<b>Year:</b>") {
-            margin_start = 5,
-            margin_top = 5,
             halign = Gtk.Align.START,
             use_markup = true
         };
@@ -194,7 +196,7 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
             hexpand = true,
             vexpand = true
         };
-        // Register drawing callback
+        drawing_area.set_size_request (400, 400);
         drawing_area.set_draw_func (this.draw_plot);
         vbox_main.append (drawing_area);
     }
