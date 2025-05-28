@@ -6,6 +6,7 @@ public class SolarAngleApp : Gtk.Application {
     private const double AXIAL_TILT = 23.44 * DEG2RAD; // Earth's tilt in radians
     private const double DAY_FACTOR = 2.0 * Math.PI / 365.0; // orbital angle change per day
     private const int RESOLUTION = 1440; // samples per 24h
+    private const int SPRING_EQUINOX_OFFSET = 79; // spring equinox's offset in days
 
     private Gtk.ApplicationWindow window;
     private Gtk.DrawingArea drawing_area;
@@ -121,7 +122,7 @@ public class SolarAngleApp : Gtk.Application {
         double sin_lat = Math.sin (latitude_rad);
         double cos_lat = Math.cos (latitude_rad);
         // solar declination relative to vernal equinox
-        double delta = AXIAL_TILT * Math.sin (DAY_FACTOR * (day_of_year - 81));
+        double delta = AXIAL_TILT * Math.sin (DAY_FACTOR * (day_of_year - SPRING_EQUINOX_OFFSET));
         for (int i = 0; i < RESOLUTION; i += 1) {
             // map index to hour of day, then to hour angle around solar noon
             double t = 24.0 / (RESOLUTION - 1) * i;

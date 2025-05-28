@@ -1,15 +1,15 @@
-#!/usr/bin/env -S vala -X -lm -X -pipe -X -O2 -X -march=native
+#!/usr/bin/env -S vala -X -lm -X -O2 -X -march=native -X -pipe
 
 /**
  * Computes solar declination in radians using an approximate formula.
  *
- * Formula: δ (rad) = (23.44 * π/180) * sin(2π/365 * (n - 81))
+ * Formula: δ (rad) = (23.44 * π/180) * sin(2π/365 * (n - 79))
  *
  * @param n The day number in the year.
  * @return Solar declination in radians.
  */
 private inline double solar_declination (int n) {
-    return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 81));
+    return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 79));
 }
 
 /**
@@ -31,7 +31,11 @@ double day_length (double latitude_rad, DateTime date_obj) {
     double delta = solar_declination (n);
 
     double X = - Math.tan (phi) * Math.tan (delta);
-    if (X < -1) {
+    if (X.is_nan ()) {
+        // Maybe on some platforms, tan(pi/2) * tan (0) returns NaN
+        // This is sprint/autumn equinox of the polar points, so day and night are equal
+        return 12.0;
+    } else if (X < -1) {
         return 24.0;
     } else if (X > 1) {
         return 0.0;
@@ -87,7 +91,7 @@ int main (string[] args) {
         }
     }
 
-    double latitude_rad = latitude_deg * Math.PI / 180.0;
+    double latitude_rad = Math.PI / 180.0 * latitude_deg;
     double T = day_length (latitude_rad, date_obj);
     stdout.printf (
         "%s  |  Latitude: %.2f deg  |  Daylight: %.2f hours\n",
