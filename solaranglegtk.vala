@@ -1,12 +1,10 @@
 #!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -O2 -X -march=native -X -pipe
 
 public class SolarAngleApp : Gtk.Application {
-    private const double DEG2RAD = Math.PI / 180.0; // degrees to radians
-    private const double RAD2DEG = 180.0 / Math.PI; // radians to degrees
+    private const double DEG2RAD = Math.PI / 180.0;
+    private const double RAD2DEG = 180.0 / Math.PI;
     private const double AXIAL_TILT = 23.44 * DEG2RAD; // Earth's tilt in radians
-    private const double DAY_FACTOR = 2.0 * Math.PI / 365.0; // orbital angle change per day
-    private const int RESOLUTION = 1440; // samples per 24h
-    private const int SPRING_EQUINOX_OFFSET = 79; // spring equinox's offset in days
+    private const int RESOLUTION = 1440; // samples per day, 1 sample per minute
 
     private Gtk.ApplicationWindow window;
     private Gtk.DrawingArea drawing_area;
@@ -117,12 +115,21 @@ public class SolarAngleApp : Gtk.Application {
         window.present ();
     }
 
-    private void generate_sun_angles (double latitude_rad, int day_of_year) {
-        // Compute solar elevation angles for each time sample
+    private void generate_sun_angles (double latitude_rad, int day_of_year, int year) {
         double sin_lat = Math.sin (latitude_rad);
         double cos_lat = Math.cos (latitude_rad);
-        // solar declination relative to vernal equinox
-        double delta = AXIAL_TILT * Math.sin (DAY_FACTOR * (day_of_year - SPRING_EQUINOX_OFFSET));
+
+        // Use the equation of NOAA for solar declination
+        double days_in_year = ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))) ? 366.0 : 365.0;
+        double gamma = 2.0 * Math.PI * (day_of_year - 1) / days_in_year;
+        double delta = 0.006918
+            - 0.339912 * Math.cos (gamma)
+            + 0.070257 * Math.sin (gamma)
+            - 0.006758 * Math.cos (2 * gamma)
+            + 0.000907 * Math.sin (2 * gamma)
+            - 0.002697 * Math.cos (3 * gamma)
+            + 0.00148 * Math.sin (3 * gamma);
+
         for (int i = 0; i < RESOLUTION; i += 1) {
             // map index to hour of day, then to hour angle around solar noon
             double t = 24.0 / (RESOLUTION - 1) * i;
@@ -136,7 +143,8 @@ public class SolarAngleApp : Gtk.Application {
     private void update_plot_data () {
         int day_of_year = selected_date.get_day_of_year ();
         double latitude_rad = latitude * DEG2RAD;
-        generate_sun_angles (latitude_rad, day_of_year);
+        int year = selected_date.get_year ();
+        generate_sun_angles (latitude_rad, day_of_year, year);
     }
 
     private void draw_sun_angle_chart (Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
