@@ -120,7 +120,7 @@ public class SolarAngleApp : Gtk.Application {
 
         // Use the equation of NOAA for solar declination
         double days_in_year = ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))) ? 366.0 : 365.0;
-        double gamma = 2.0 * Math.PI * (day_of_year - 1) / days_in_year;
+        double gamma = 2.0 * Math.PI * day_of_year / days_in_year;
         double delta = 0.006918
             - 0.399912 * Math.cos (gamma)
             + 0.070257 * Math.sin (gamma)

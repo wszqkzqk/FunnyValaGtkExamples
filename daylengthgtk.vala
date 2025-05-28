@@ -17,15 +17,32 @@ private inline int days_in_year (int year) {
 }
 
 /**
- * Computes solar declination in radians using an approximate formula.
+ * Computes solar declination (δ) in radians using NOAA's empirical formula.
  *
- * Formula: δ (rad) = (23.44 * π/180) * sin(2π/365 * (n - 81))
+ * δ = 0.006918
+ *   - 0.399912 * cos(γ)
+ *   + 0.070257 * sin(γ)
+ *   - 0.006758 * cos(2γ)
+ *   + 0.000907 * sin(2γ)
+ *   - 0.002697 * cos(3γ)
+ *   + 0.001480 * sin(3γ)
  *
- * @param n The day number in the year.
+ * where γ = 2π * n / days_in_year(year).
+ *
+ * @param n     Day of year (1..365/366)
+ * @param year  Calendar year for days calculation
  * @return Solar declination in radians.
  */
-private inline double solar_declination (int n) {
-    return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 81));
+private inline double solar_declination (int n, int year) {
+    double days = days_in_year (year);
+    double gamma = 2.0 * Math.PI * n / days;
+    return 0.006918
+        - 0.399912 * Math.cos (gamma)
+        + 0.070257 * Math.sin (gamma)
+        - 0.006758 * Math.cos (2 * gamma)
+        + 0.000907 * Math.sin (2 * gamma)
+        - 0.002697 * Math.cos (3 * gamma)
+        + 0.00148  * Math.sin (3 * gamma);
 }
 
 /**
@@ -41,9 +58,9 @@ private inline double solar_declination (int n) {
  * @param n The day number in the year.
  * @return Day length in hours.
  */
-private inline double compute_day_length (double latitude_rad, int n) {
+private inline double compute_day_length (double latitude_rad, int n, int year) {
     double phi = latitude_rad;
-    double delta = solar_declination (n);
+    double delta = solar_declination (n, year);
     double X = -Math.tan (phi) * Math.tan (delta);
     if (X < -1) {
         return 24.0; // Polar day
@@ -70,7 +87,7 @@ private inline double[] generate_day_lengths (double latitude_rad, int year) {
     int total_days = days_in_year (year);
     double[] lengths = new double[total_days];
     for (int i = 0; i < total_days; i += 1) {
-        lengths[i] = compute_day_length (latitude_rad, i + 1);
+        lengths[i] = compute_day_length (latitude_rad, i + 1, year);
     }
     return lengths;
 }
@@ -136,7 +153,7 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         };
         hbox_controls.append (year_label);
 
-        year_entry = new Gtk.SpinButton.with_range (-9999, 9999, 1) {
+        year_entry = new Gtk.SpinButton.with_range (1, 9999, 1) {
             digits = 0,
             value = current_year
         };
