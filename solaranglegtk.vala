@@ -3,7 +3,6 @@
 public class SolarAngleApp : Gtk.Application {
     private const double DEG2RAD = Math.PI / 180.0;
     private const double RAD2DEG = 180.0 / Math.PI;
-    private const double AXIAL_TILT = 23.44 * DEG2RAD; // Earth's tilt in radians
     private const int RESOLUTION = 1440; // samples per day, 1 sample per minute
 
     private Gtk.ApplicationWindow window;
@@ -123,7 +122,7 @@ public class SolarAngleApp : Gtk.Application {
         double days_in_year = ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))) ? 366.0 : 365.0;
         double gamma = 2.0 * Math.PI * (day_of_year - 1) / days_in_year;
         double delta = 0.006918
-            - 0.339912 * Math.cos (gamma)
+            - 0.399912 * Math.cos (gamma)
             + 0.070257 * Math.sin (gamma)
             - 0.006758 * Math.cos (2 * gamma)
             + 0.000907 * Math.sin (2 * gamma)
