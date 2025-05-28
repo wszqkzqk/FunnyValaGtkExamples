@@ -1,24 +1,48 @@
 #!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -O2 -X -march=native -X -pipe
 
+/**
+ * Solar Angle Calculator Application.
+ *
+ * A GTK4 application that calculates and visualizes solar elevation angles
+ * throughout the day for a given location and date. The application provides
+ * an interactive interface for setting latitude, longitude, timezone, and date,
+ * and displays a real-time chart of solar elevation angles with export capabilities.
+ */
 public class SolarAngleApp : Gtk.Application {
     private const double DEG2RAD = Math.PI / 180.0;
     private const double RAD2DEG = 180.0 / Math.PI;
-    private const int RESOLUTION = 1440; // samples per day, 1 sample per minute
+    private const int RESOLUTION_PER_MIN = 1440; // 1 sample per minute
 
     private Gtk.ApplicationWindow window;
     private Gtk.DrawingArea drawing_area;
     private Gtk.SpinButton latitude_spin;
+    private Gtk.SpinButton longitude_spin;
+    private Gtk.SpinButton timezone_spin;
     private Gtk.Calendar calendar;
     private Gtk.Button export_button;
     private double latitude = 0.0;
+    private double longitude = 0.0;
+    private double timezone_offset_hours = 0.0;
     private DateTime selected_date;
-    private double sun_angles[RESOLUTION]; // Fixed size array for solar angles
+    private double sun_angles[RESOLUTION_PER_MIN];
 
+    /**
+     * Creates a new SolarAngleApp instance.
+     *
+     * Initializes the application with a unique application ID and sets
+     * the selected date to the current local date.
+     */
     public SolarAngleApp () {
         Object (application_id: "com.github.wszqkzqk.SolarAngleApp");
         selected_date = new DateTime.now_local ();
     }
 
+    /**
+     * Activates the application and creates the main window.
+     *
+     * Sets up the user interface including input controls, drawing area,
+     * and initializes the plot data with current settings.
+     */
     protected override void activate () {
         window = new Gtk.ApplicationWindow (this);
         window.title = "Solar Angle Calculator";
@@ -41,15 +65,18 @@ public class SolarAngleApp : Gtk.Application {
             margin_bottom = 10,
         };
 
-        var latitude_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var latitude_label = new Gtk.Label ("<b>Latitude Settings</b>") {
+        var location_time_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
+        var location_time_label = new Gtk.Label ("<b>Location and Time Settings</b>") {
             use_markup = true,
             halign = Gtk.Align.START,
         };
+        location_time_group.append (location_time_label);
 
         var latitude_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
-        var latitude_input_label = new Gtk.Label ("Latitude (deg):");
-        latitude_input_label.halign = Gtk.Align.START;
+        var latitude_input_label = new Gtk.Label ("Latitude (deg):") {
+            halign = Gtk.Align.START,
+            hexpand = true,
+        };
         latitude_spin = new Gtk.SpinButton.with_range (-90, 90, 0.1) {
             value = latitude,
             digits = 2,
@@ -63,8 +90,48 @@ public class SolarAngleApp : Gtk.Application {
 
         latitude_box.append (latitude_input_label);
         latitude_box.append (latitude_spin);
-        latitude_group.append (latitude_label);
-        latitude_group.append (latitude_box);
+        location_time_group.append (latitude_box);
+
+        // Longitude input
+        var longitude_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
+        var longitude_input_label = new Gtk.Label ("Longitude (deg):") {
+            halign = Gtk.Align.START,
+            hexpand = true,
+        };
+        longitude_spin = new Gtk.SpinButton.with_range (-180.0, 180.0, 1.0) {
+            value = longitude,
+            digits = 1,
+            width_request = 100,
+        };
+        longitude_spin.value_changed.connect (() => {
+            longitude = longitude_spin.value;
+            update_plot_data ();
+            drawing_area.queue_draw ();
+        });
+        longitude_box.append (longitude_input_label);
+        longitude_box.append (longitude_spin);
+        location_time_group.append (longitude_box);
+
+        // Timezone input
+        var timezone_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
+        var timezone_input_label = new Gtk.Label ("Timezone (hour):") {
+            halign = Gtk.Align.START,
+            hexpand = true,
+        };
+        timezone_spin = new Gtk.SpinButton.with_range (-12.0, 14.0, 0.5) {
+            value = timezone_offset_hours,
+            digits = 1,
+            width_request = 100,
+        };
+        timezone_spin.value_changed.connect (() => {
+            timezone_offset_hours = timezone_spin.value;
+            update_plot_data ();
+            drawing_area.queue_draw ();
+        });
+        timezone_box.append (timezone_input_label);
+        timezone_box.append (timezone_spin);
+        location_time_group.append (timezone_box);
+
 
         var date_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
         var date_label = new Gtk.Label ("<b>Date Selection</b>") {
@@ -93,7 +160,7 @@ public class SolarAngleApp : Gtk.Application {
         export_group.append (export_label);
         export_group.append (export_button);
 
-        left_panel.append (latitude_group);
+        left_panel.append (location_time_group); // Changed from latitude_group
         left_panel.append (date_group);
         left_panel.append (export_group);
 
@@ -114,40 +181,79 @@ public class SolarAngleApp : Gtk.Application {
         window.present ();
     }
 
-    private void generate_sun_angles (double latitude_rad, int day_of_year, int year) {
+    /**
+     * Calculates solar elevation angles for each minute of the day.
+     *
+     * @param latitude_rad Latitude in radians.
+     * @param day_of_year Day of the year (1-365/366).
+     * @param year The year.
+     * @param longitude_deg Longitude in degrees.
+     * @param timezone_offset_hrs Timezone offset from UTC in hours.
+     */
+    private void generate_sun_angles (double latitude_rad, int day_of_year, int year, double longitude_deg, double timezone_offset_hrs) {
         double sin_lat = Math.sin (latitude_rad);
         double cos_lat = Math.cos (latitude_rad);
 
-        // Use the equation of NOAA for solar declination
         double days_in_year = ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))) ? 366.0 : 365.0;
-        double gamma = 2.0 * Math.PI * day_of_year / days_in_year;
-        double delta = 0.006918
-            - 0.399912 * Math.cos (gamma)
-            + 0.070257 * Math.sin (gamma)
-            - 0.006758 * Math.cos (2 * gamma)
-            + 0.000907 * Math.sin (2 * gamma)
-            - 0.002697 * Math.cos (3 * gamma)
-            + 0.00148 * Math.sin (3 * gamma);
 
-        for (int i = 0; i < RESOLUTION; i += 1) {
-            // map index to hour of day, then to hour angle around solar noon
-            double t = 24.0 / (RESOLUTION - 1) * i;
-            double hour_angle = (2.0 * Math.PI / 24.0) * (t - 12.0);
-            // spherical formula for elevation angle
-            double sin_a = sin_lat * Math.sin (delta) + cos_lat * Math.cos (delta) * Math.cos (hour_angle);
-            sun_angles[i] = Math.asin (sin_a) * RAD2DEG;
+        for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
+            // fractional_day_component: day of year plus fraction of the day
+            double fractional_day_component = day_of_year - 1 + ((double) i) / RESOLUTION_PER_MIN;
+            // gamma: fractional year angle in radians
+            double gamma_rad = (2.0 * Math.PI / days_in_year) * fractional_day_component;
+
+            // Solar declination delta (rad) via Fourier series approximation
+            double decl_rad = 0.006918
+                - 0.399912 * Math.cos(gamma_rad)
+                + 0.070257 * Math.sin(gamma_rad)
+                - 0.006758 * Math.cos(2.0 * gamma_rad)
+                + 0.000907 * Math.sin(2.0 * gamma_rad)
+                - 0.002697 * Math.cos(3.0 * gamma_rad)
+                + 0.001480 * Math.sin(3.0 * gamma_rad);
+
+            // Equation of Time (EoT) in minutes
+            double eqtime_minutes = 229.18 * (0.000075
+                + 0.001868 * Math.cos(gamma_rad)
+                - 0.032077 * Math.sin(gamma_rad)
+                - 0.014615 * Math.cos(2.0 * gamma_rad)
+                - 0.040849 * Math.sin(2.0 * gamma_rad));
+
+            // True Solar Time (TST) in minutes, correcting local clock by EoT and longitude
+            double tst_minutes = i + eqtime_minutes - 4.0 * (longitude_deg - 15.0 * timezone_offset_hrs);
+
+            // Hour angle H (°) relative to solar noon
+            double ha_deg = (tst_minutes / 4.0) - 180.0;
+            double ha_rad = ha_deg * DEG2RAD;
+
+            // cos(phi): cosine of zenith angle via spherical trig
+            double cos_phi = sin_lat * Math.sin(decl_rad) + cos_lat * Math.cos(decl_rad) * Math.cos(ha_rad);
+            // clamp to valid range
+            if (cos_phi > 1.0) cos_phi = 1.0;
+            if (cos_phi < -1.0) cos_phi = -1.0;
+            // Zenith angle phi (rad)
+            double phi_rad = Math.acos(cos_phi);
+
+            // Solar elevation alpha = 90° - phi, convert to degrees
+            double solar_elevation_rad = Math.PI / 2.0 - phi_rad;
+            sun_angles[i] = solar_elevation_rad * RAD2DEG;
         }
     }
 
+    /**
+     * Updates solar angle data for current settings.
+     */
     private void update_plot_data () {
         int day_of_year = selected_date.get_day_of_year ();
         double latitude_rad = latitude * DEG2RAD;
         int year = selected_date.get_year ();
-        generate_sun_angles (latitude_rad, day_of_year, year);
+        generate_sun_angles (latitude_rad, day_of_year, year, longitude, timezone_offset_hours);
     }
 
+    /**
+     * Draws the solar elevation chart.
+     */
     private void draw_sun_angle_chart (Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
-        // fill white background
+        // Fill background
         cr.set_source_rgb (1, 1, 1);
         cr.paint ();
 
@@ -158,11 +264,12 @@ public class SolarAngleApp : Gtk.Application {
 
         double horizon_y = mt + ph * (1 - (0 - y_min) / (y_max - y_min));
         
+        // Shade area below horizon
         cr.set_source_rgba (0.7, 0.7, 0.7, 0.3);
         cr.rectangle (ml, horizon_y, pw, height - mb - horizon_y);
         cr.fill ();
 
-        // draw horizontal grid every 15° elevation
+        // Draw horizontal grid every 15°
         cr.set_source_rgba (0.5, 0.5, 0.5, 0.5);
         cr.set_line_width (1);
         for (int a = -90; a <= 90; a += 15) {
@@ -171,7 +278,7 @@ public class SolarAngleApp : Gtk.Application {
             cr.line_to (width - mr, yv);
             cr.stroke ();
         }
-        // draw vertical grid every 2 hours
+        // Draw vertical grid every 2 hours
         for (int h = 0; h <= 24; h += 2) {
             double xv = ml + pw * (h / 24.0);
             cr.move_to (xv, mt);
@@ -179,7 +286,7 @@ public class SolarAngleApp : Gtk.Application {
             cr.stroke ();
         }
 
-        // draw axes and horizon line
+        // Draw axes and horizon
         cr.set_source_rgb (0, 0, 0);
         cr.set_line_width (2);
         cr.move_to (ml, height - mb);
@@ -188,11 +295,12 @@ public class SolarAngleApp : Gtk.Application {
         cr.move_to (ml, mt);
         cr.line_to (ml, height - mb);
         cr.stroke ();
-        // Draw horizon line
+        // Horizon line
         cr.move_to (ml, horizon_y);
         cr.line_to (width - mr, horizon_y);
         cr.stroke ();
 
+        // Draw axis ticks and labels
         cr.set_line_width (1);
         cr.set_font_size (20);
         for (int a = -90; a <= 90; a += 15) {
@@ -218,11 +326,11 @@ public class SolarAngleApp : Gtk.Application {
             cr.show_text (txt);
         }
 
-        // plot solar elevation curve in red
+        // Plot solar elevation curve
         cr.set_source_rgb (1, 0, 0);
         cr.set_line_width (2);
-        for (int i = 0; i < RESOLUTION; i += 1) {
-            double x = ml + pw * (i / (double)(RESOLUTION - 1));
+        for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
+            double x = ml + pw * (i / (double)(RESOLUTION_PER_MIN - 1));
             double y = mt + ph * (1 - (sun_angles[i] - y_min) / (y_max - y_min));
             if (i == 0) {
                 cr.move_to (x, y);
@@ -232,12 +340,13 @@ public class SolarAngleApp : Gtk.Application {
         }
         cr.stroke ();
 
+        // Draw axis titles
         cr.set_source_rgb (0, 0, 0);
         cr.set_font_size (20);
         string x_title = "Time (Hour)";
         Cairo.TextExtents x_ext;
         cr.text_extents (x_title, out x_ext);
-        cr.move_to ((double)width / 2 - x_ext.width / 2, height - mb + 55);
+        cr.move_to ((double) width / 2 - x_ext.width / 2, height - mb + 55);
         cr.show_text (x_title);
         string y_title = "Solar Elevation (°)";
         Cairo.TextExtents y_ext;
@@ -249,17 +358,30 @@ public class SolarAngleApp : Gtk.Application {
         cr.show_text (y_title);
         cr.restore ();
 
-        string caption = "Solar Elevation Angle - Latitude: %.2f°, Date: %s".printf (
-            latitude, selected_date.format ("%Y-%m-%d"));
-        cr.set_font_size (22);
-        Cairo.TextExtents cap_ext;
-        cr.text_extents (caption, out cap_ext);
-        cr.move_to ((width - cap_ext.width) / 2, (double)mt / 2);
-        cr.show_text (caption);
+        // Draw chart captions
+        string caption_line1 = "Solar Elevation Angle - Date: %s".printf(selected_date.format("%Y-%m-%d"));
+        string caption_line2 = "Lat: %.2f°, Lon: %.1f°, TZ: UTC%+.1f".printf(latitude, longitude, timezone_offset_hours);
+        
+        cr.set_font_size(18);
+        Cairo.TextExtents cap_ext1, cap_ext2;
+        cr.text_extents(caption_line1, out cap_ext1);
+        cr.text_extents(caption_line2, out cap_ext2);
+
+        double total_caption_height = cap_ext1.height + cap_ext2.height + 5;
+
+        cr.move_to((width - cap_ext1.width) / 2, (mt - total_caption_height) / 2 + cap_ext1.height);
+        cr.show_text(caption_line1);
+        cr.move_to((width - cap_ext2.width) / 2, (mt - total_caption_height) / 2 + cap_ext1.height + 5 + cap_ext2.height);
+        cr.show_text(caption_line2);
     }
 
+    /**
+     * Handles export button click event.
+     *
+     * Shows a file save dialog with filters for PNG, SVG, and PDF formats.
+     */
     private void on_export_clicked () {
-        // Open save dialog with PNG, SVG & PDF filters
+        // Show save dialog with PNG, SVG, PDF filters
         var png_filter = new Gtk.FileFilter ();
         png_filter.name = "PNG Images";
         png_filter.add_mime_type ("image/png");
@@ -296,8 +418,15 @@ public class SolarAngleApp : Gtk.Application {
         });
     }
 
+    /**
+     * Exports the current chart to a file.
+     *
+     * Supports PNG, SVG, and PDF formats based on file extension.
+     * Defaults to PNG if extension is not recognized.
+     *
+     * @param filepath The file path where the chart should be saved.
+     */
     private void export_chart (string filepath) {
-        // Export current chart to chosen format by extension
         int width = drawing_area.get_width ();
         int height = drawing_area.get_height ();
 
@@ -328,6 +457,14 @@ public class SolarAngleApp : Gtk.Application {
         }
     }
 
+    /**
+     * Application entry point.
+     *
+     * Creates and runs the SolarAngleApp instance.
+     *
+     * @param args Command line arguments.
+     * @return Exit code.
+     */
     public static int main (string[] args) {
         var app = new SolarAngleApp ();
         return app.run (args);
