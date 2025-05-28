@@ -19,13 +19,13 @@ private inline int days_in_year (int year) {
 /**
  * Computes solar declination in radians using an approximate formula.
  *
- * Formula: δ (rad) = (23.44 * π/180) * sin(2π/365 * (n - 79))
+ * Formula: δ (rad) = (23.44 * π/180) * sin(2π/365 * (n - 81))
  *
  * @param n The day number in the year.
  * @return Solar declination in radians.
  */
 private inline double solar_declination (int n) {
-    return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 79));
+    return (23.44 * Math.PI / 180.0) * Math.sin (2 * Math.PI / 365.0 * (n - 81));
 }
 
 /**
