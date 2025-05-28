@@ -1,4 +1,4 @@
-#!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -pipe -X -O2 -X -march=native
+#!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -O2 -X -march=native -X -pipe
 
 // Helper functions to compute day-of-year, solar declination and day length
 
@@ -79,8 +79,8 @@ private inline double[] generate_day_lengths (double latitude_rad, int year) {
  * Window for displaying the day length plot.
  */
 public class DayLengthWindow : Gtk.ApplicationWindow {
-    private Gtk.Entry latitude_entry;
-    private Gtk.Entry year_entry;
+    private Gtk.SpinButton latitude_entry;
+    private Gtk.SpinButton year_entry;
     private Gtk.DrawingArea drawing_area;
     private double[] day_lengths;
     private int current_year;
@@ -124,9 +124,9 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         };
         hbox_controls.append (lat_label);
 
-        latitude_entry = new Gtk.Entry () {
-            width_chars = 10,
-            input_purpose = Gtk.InputPurpose.NUMBER
+        latitude_entry = new Gtk.SpinButton.with_range (-90.0, 90.0, 0.1) {
+            digits = 2,
+            value = 0.0
         };
         hbox_controls.append (latitude_entry);
 
@@ -136,17 +136,19 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         };
         hbox_controls.append (year_label);
 
-        year_entry = new Gtk.Entry () {
-            width_chars = 10,
-            input_purpose = Gtk.InputPurpose.DIGITS,
-            // Set year entry text using current_year
-            text = current_year.to_string ()
+        year_entry = new Gtk.SpinButton.with_range (-9999, 9999, 1) {
+            digits = 0,
+            value = current_year
         };
         hbox_controls.append (year_entry);
 
-        var plot_button = new Gtk.Button.with_label ("Plot");
-        hbox_controls.append (plot_button);
-        plot_button.clicked.connect (() => {
+        // Add value change listeners for automatic plot updates
+        latitude_entry.value_changed.connect (() => {
+            update_plot_data ();
+            drawing_area.queue_draw ();
+        });
+
+        year_entry.value_changed.connect (() => {
             update_plot_data ();
             drawing_area.queue_draw ();
         });
@@ -207,10 +209,10 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
      * Updates plot data based on input values.
      */
     private void update_plot_data () {
-        latitude_deg = double.parse (latitude_entry.text);
-        current_year = int.parse (year_entry.text);
+        latitude_deg = latitude_entry.value;
+        current_year = (int) year_entry.value;
         // Convert input latitude (in degrees) to radians
-        double latitude_rad = latitude_deg * Math.PI / 180.0;
+        double latitude_rad = Math.PI / 180.0 * latitude_deg;
         day_lengths = generate_day_lengths (latitude_rad, current_year);
     }
 
@@ -330,23 +332,18 @@ public class DayLengthWindow : Gtk.ApplicationWindow {
         cr.show_text (y_title);
         cr.restore ();
 
-        // Add caption below the X axis title for clarity and aesthetics
-        string caption;
         if (day_lengths == null) {
-            caption = "Day Length";
-        } else {
-            caption = "Day Length - Latitude: %.2f°, Year: %d".printf (latitude_deg, current_year);
+            // Initialize day_lengths if not set
+            update_plot_data ();
         }
+
+        // Add caption below the X axis title for clarity and aesthetics
+        string caption = "Day Length - Latitude: %.2f°, Year: %d".printf (latitude_deg, current_year);
         cr.set_font_size (22);
         Cairo.TextExtents cap_ext;
         cr.text_extents (caption, out cap_ext);
         cr.move_to ((width - cap_ext.width) / 2, (double) margin_top / 2);
         cr.show_text (caption);
-
-        // Return if no data
-        if (day_lengths == null) {
-            return;
-        }
 
         // Draw data curve (red, bold)
         cr.set_source_rgb (1, 0, 0);
