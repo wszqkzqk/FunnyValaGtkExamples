@@ -211,10 +211,10 @@ public class SolarAngleApp : Gtk.Application {
                 - 0.040849 * Math.sin (2.0 * gamma_rad));
 
             // True Solar Time (TST) in minutes, correcting local clock by EoT and longitude
-            double tst_minutes = i + eqtime_minutes - 4.0 * (longitude_deg - 15.0 * timezone_offset_hrs);
+            double tst_minutes = i + eqtime_minutes + 4.0 * longitude_deg - 60.0 * timezone_offset_hrs;
 
             // Hour angle H (°) relative to solar noon
-            double ha_deg = (tst_minutes / 4.0) - 180.0;
+            double ha_deg = tst_minutes / 4.0 - 180.0;
             double ha_rad = ha_deg * DEG2RAD;
 
             // cos(phi): cosine of zenith angle via spherical trig
