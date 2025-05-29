@@ -57,7 +57,6 @@ public class SolarAngleApp : Gtk.Application {
         };
 
         var left_panel = new Gtk.Box (Gtk.Orientation.VERTICAL, 15) {
-            width_request = 320,
             hexpand = false,
             margin_start = 10,
             margin_end = 10,
@@ -72,15 +71,18 @@ public class SolarAngleApp : Gtk.Application {
         };
         location_time_group.append (location_time_label);
 
-        var latitude_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
-        var latitude_input_label = new Gtk.Label ("Latitude (deg):") {
+        var settings_grid = new Gtk.Grid () {
+            column_spacing = 10,
+            row_spacing = 8,
+            margin_top = 5,
+        };
+
+        var latitude_label = new Gtk.Label ("Latitude (deg):") {
             halign = Gtk.Align.START,
-            hexpand = true,
         };
         latitude_spin = new Gtk.SpinButton.with_range (-90, 90, 0.1) {
             value = latitude,
             digits = 2,
-            width_request = 100,
         };
         latitude_spin.value_changed.connect (() => {
             latitude = latitude_spin.value;
@@ -88,50 +90,40 @@ public class SolarAngleApp : Gtk.Application {
             drawing_area.queue_draw ();
         });
 
-        latitude_box.append (latitude_input_label);
-        latitude_box.append (latitude_spin);
-        location_time_group.append (latitude_box);
-
-        // Longitude input
-        var longitude_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
-        var longitude_input_label = new Gtk.Label ("Longitude (deg):") {
+        var longitude_label = new Gtk.Label ("Longitude (deg):") {
             halign = Gtk.Align.START,
-            hexpand = true,
         };
         longitude_spin = new Gtk.SpinButton.with_range (-180.0, 180.0, 1.0) {
             value = longitude,
             digits = 1,
-            width_request = 100,
         };
         longitude_spin.value_changed.connect (() => {
             longitude = longitude_spin.value;
             update_plot_data ();
             drawing_area.queue_draw ();
         });
-        longitude_box.append (longitude_input_label);
-        longitude_box.append (longitude_spin);
-        location_time_group.append (longitude_box);
 
-        // Timezone input
-        var timezone_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 10);
-        var timezone_input_label = new Gtk.Label ("Timezone (hour):") {
+        var timezone_label = new Gtk.Label ("Timezone (hour):") {
             halign = Gtk.Align.START,
-            hexpand = true,
         };
         timezone_spin = new Gtk.SpinButton.with_range (-12.0, 14.0, 0.5) {
             value = timezone_offset_hours,
             digits = 1,
-            width_request = 100,
         };
         timezone_spin.value_changed.connect (() => {
             timezone_offset_hours = timezone_spin.value;
             update_plot_data ();
             drawing_area.queue_draw ();
         });
-        timezone_box.append (timezone_input_label);
-        timezone_box.append (timezone_spin);
-        location_time_group.append (timezone_box);
 
+        settings_grid.attach (latitude_label, 0, 0, 1, 1);
+        settings_grid.attach (latitude_spin, 1, 0, 1, 1);
+        settings_grid.attach (longitude_label, 0, 1, 1, 1);
+        settings_grid.attach (longitude_spin, 1, 1, 1, 1);
+        settings_grid.attach (timezone_label, 0, 2, 1, 1);
+        settings_grid.attach (timezone_spin, 1, 2, 1, 1);
+
+        location_time_group.append (settings_grid);
 
         var date_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
         var date_label = new Gtk.Label ("<b>Date Selection</b>") {
@@ -204,19 +196,19 @@ public class SolarAngleApp : Gtk.Application {
 
             // Solar declination delta (rad) via Fourier series approximation
             double decl_rad = 0.006918
-                - 0.399912 * Math.cos(gamma_rad)
-                + 0.070257 * Math.sin(gamma_rad)
-                - 0.006758 * Math.cos(2.0 * gamma_rad)
-                + 0.000907 * Math.sin(2.0 * gamma_rad)
-                - 0.002697 * Math.cos(3.0 * gamma_rad)
-                + 0.001480 * Math.sin(3.0 * gamma_rad);
+                - 0.399912 * Math.cos (gamma_rad)
+                + 0.070257 * Math.sin (gamma_rad)
+                - 0.006758 * Math.cos (2.0 * gamma_rad)
+                + 0.000907 * Math.sin (2.0 * gamma_rad)
+                - 0.002697 * Math.cos (3.0 * gamma_rad)
+                + 0.001480 * Math.sin (3.0 * gamma_rad);
 
             // Equation of Time (EoT) in minutes
             double eqtime_minutes = 229.18 * (0.000075
-                + 0.001868 * Math.cos(gamma_rad)
-                - 0.032077 * Math.sin(gamma_rad)
-                - 0.014615 * Math.cos(2.0 * gamma_rad)
-                - 0.040849 * Math.sin(2.0 * gamma_rad));
+                + 0.001868 * Math.cos (gamma_rad)
+                - 0.032077 * Math.sin (gamma_rad)
+                - 0.014615 * Math.cos (2.0 * gamma_rad)
+                - 0.040849 * Math.sin (2.0 * gamma_rad));
 
             // True Solar Time (TST) in minutes, correcting local clock by EoT and longitude
             double tst_minutes = i + eqtime_minutes - 4.0 * (longitude_deg - 15.0 * timezone_offset_hrs);
@@ -226,12 +218,12 @@ public class SolarAngleApp : Gtk.Application {
             double ha_rad = ha_deg * DEG2RAD;
 
             // cos(phi): cosine of zenith angle via spherical trig
-            double cos_phi = sin_lat * Math.sin(decl_rad) + cos_lat * Math.cos(decl_rad) * Math.cos(ha_rad);
+            double cos_phi = sin_lat * Math.sin (decl_rad) + cos_lat * Math.cos (decl_rad) * Math.cos(ha_rad);
             // clamp to valid range
             if (cos_phi > 1.0) cos_phi = 1.0;
             if (cos_phi < -1.0) cos_phi = -1.0;
             // Zenith angle phi (rad)
-            double phi_rad = Math.acos(cos_phi);
+            double phi_rad = Math.acos (cos_phi);
 
             // Solar elevation alpha = 90° - phi, convert to degrees
             double solar_elevation_rad = Math.PI / 2.0 - phi_rad;
