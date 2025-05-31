@@ -20,6 +20,7 @@ public class SolarAngleApp : Gtk.Application {
     private Gtk.SpinButton timezone_spin;
     private Gtk.Calendar calendar;
     private Gtk.Button export_button;
+    private Gtk.Button export_csv_button;
     private Gtk.Label click_info_label;
     private DateTime selected_date;
     private double latitude = 0.0;
@@ -145,16 +146,27 @@ public class SolarAngleApp : Gtk.Application {
         date_group.append (calendar);
 
         var export_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var export_label = new Gtk.Label ("<b>Export Chart</b>") {
+        var export_label = new Gtk.Label ("<b>Export</b>") {
             use_markup = true,
             halign = Gtk.Align.START,
+        };
+
+        // Create horizontal box for buttons
+        var export_buttons_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 5) {
+            homogeneous = true,
         };
 
         export_button = new Gtk.Button.with_label ("Export Image");
         export_button.clicked.connect (on_export_clicked);
 
+        export_csv_button = new Gtk.Button.with_label ("Export CSV");
+        export_csv_button.clicked.connect (on_export_csv_clicked);
+
+        export_buttons_box.append (export_button);
+        export_buttons_box.append (export_csv_button);
+
         export_group.append (export_label);
-        export_group.append (export_button);
+        export_group.append (export_buttons_box);
 
         // Add click info display group
         var click_info_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
@@ -495,11 +507,10 @@ public class SolarAngleApp : Gtk.Application {
             try {
                 var file = file_dialog.save.end (res);
                 if (file != null) {
-                    string filepath = file.get_path ();
-                    export_chart (filepath);
+                    export_chart (file);
                 }
             } catch (Error e) {
-                message ("File has not been saved: %s", e.message);
+                message ("Image file has not been saved: %s", e.message);
             }
         });
     }
@@ -510,9 +521,9 @@ public class SolarAngleApp : Gtk.Application {
      * Supports PNG, SVG, and PDF formats based on file extension.
      * Defaults to PNG if extension is not recognized.
      *
-     * @param filepath The file path where the chart should be saved.
+     * @param file The file to export the chart to.
      */
-    private void export_chart (string filepath) {
+    private void export_chart (File file) {
         int width = drawing_area.get_width ();
         int height = drawing_area.get_height ();
 
@@ -521,6 +532,7 @@ public class SolarAngleApp : Gtk.Application {
             height = 600;
         }
 
+        string filepath = file.get_path ();
         string? extension = null;
         var last_dot = filepath.last_index_of_char ('.');
         if (last_dot != -1) {
@@ -540,6 +552,72 @@ public class SolarAngleApp : Gtk.Application {
             Cairo.Context cr = new Cairo.Context (surface);
             draw_sun_angle_chart (drawing_area, cr, width, height);
             surface.write_to_png (filepath);
+        }
+    }
+
+    /**
+     * Handles CSV export button click event.
+     *
+     * Shows a file save dialog for CSV format.
+     */
+    private void on_export_csv_clicked () {
+        var csv_filter = new Gtk.FileFilter ();
+        csv_filter.name = "CSV Files";
+        csv_filter.add_mime_type ("text/csv");
+
+        var filter_list = new ListStore (typeof (Gtk.FileFilter));
+        filter_list.append (csv_filter);
+
+        var file_dialog = new Gtk.FileDialog () {
+            modal = true,
+            initial_name = "solar_elevation_data.csv",
+            filters = filter_list
+        };
+
+        file_dialog.save.begin (window, null, (obj, res) => {
+            try {
+                var file = file_dialog.save.end (res);
+                if (file != null) {
+                    export_csv_data (file);
+                }
+            } catch (Error e) {
+                message ("CSV file has not been saved: %s", e.message);
+            }
+        });
+    }
+
+    /**
+     * Exports the solar elevation data to a CSV file.
+     *
+     * @param file The file to export the data to.
+     */
+    private void export_csv_data (File file) {
+        try {
+            var stream = file.replace (null, false, FileCreateFlags.REPLACE_DESTINATION);
+            var data_stream = new DataOutputStream (stream);
+
+            // Write CSV metadata as comments
+            data_stream.put_string ("# Solar Elevation Data\n");
+            data_stream.put_string ("# Date: %s\n".printf(selected_date.format("%Y-%m-%d")));
+            data_stream.put_string ("# Latitude: %.2f degrees\n".printf(latitude));
+            data_stream.put_string ("# Longitude: %.2f degrees\n".printf(longitude));
+            data_stream.put_string ("# Timezone: UTC%+.2f\n".printf(timezone_offset_hours));
+            data_stream.put_string ("#\n");
+
+            // Write CSV header
+            data_stream.put_string ("Time,Solar Elevation (degrees)\n");
+
+            // Write data points
+            for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
+                int hours = i / 60;
+                int minutes = i % 60;
+                string time_str = "%02d:%02d".printf(hours, minutes);
+                data_stream.put_string ("%s,%.3f\n".printf(time_str, sun_angles[i]));
+            }
+
+            data_stream.close ();
+        } catch (Error e) {
+            message ("Error saving CSV file: %s", e.message);
         }
     }
 
