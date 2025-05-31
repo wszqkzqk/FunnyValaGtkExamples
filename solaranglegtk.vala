@@ -9,23 +9,24 @@
  * and displays a real-time chart of solar elevation angles with export capabilities.
  */
 public class SolarAngleApp : Gtk.Application {
+    // Constants for solar angle calculations
     private const double DEG2RAD = Math.PI / 180.0;
     private const double RAD2DEG = 180.0 / Math.PI;
     private const int RESOLUTION_PER_MIN = 1440; // 1 sample per minute
+    // Constants for margins in the drawing area
+    private const int MARGIN_LEFT = 70;
+    private const int MARGIN_RIGHT = 20;
+    private const int MARGIN_TOP = 50;
+    private const int MARGIN_BOTTOM = 70;
 
     private Gtk.ApplicationWindow window;
     private Gtk.DrawingArea drawing_area;
-    private Gtk.SpinButton latitude_spin;
-    private Gtk.SpinButton longitude_spin;
-    private Gtk.SpinButton timezone_spin;
-    private Gtk.Calendar calendar;
-    private Gtk.Button export_button;
     private Gtk.Label click_info_label;
     private DateTime selected_date;
+    private double sun_angles[RESOLUTION_PER_MIN];
     private double latitude = 0.0;
     private double longitude = 0.0;
     private double timezone_offset_hours = 0.0;
-    private double sun_angles[RESOLUTION_PER_MIN];
     private double clicked_x = 0.0;
     private double corresponding_y = 0.0;
     private bool has_click_point = false;
@@ -48,17 +49,13 @@ public class SolarAngleApp : Gtk.Application {
      * and initializes the plot data with current settings.
      */
     protected override void activate () {
-        window = new Gtk.ApplicationWindow (this);
-        window.title = "Solar Angle Calculator";
-        window.default_width = 1000;
-        window.default_height = 700;
-
-        var main_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0) {
-            margin_start = 10,
-            margin_end = 10,
-            margin_top = 10,
-            margin_bottom = 10,
+        window = new Gtk.ApplicationWindow (this) {
+            title = "Solar Angle Calculator",
+            default_width = 1000,
+            default_height = 700,
         };
+
+        var main_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
 
         var left_panel = new Gtk.Box (Gtk.Orientation.VERTICAL, 15) {
             hexpand = false,
@@ -84,7 +81,7 @@ public class SolarAngleApp : Gtk.Application {
         var latitude_label = new Gtk.Label ("Latitude (deg):") {
             halign = Gtk.Align.START,
         };
-        latitude_spin = new Gtk.SpinButton.with_range (-90, 90, 0.1) {
+        var latitude_spin = new Gtk.SpinButton.with_range (-90, 90, 0.1) {
             value = latitude,
             digits = 2,
         };
@@ -97,7 +94,7 @@ public class SolarAngleApp : Gtk.Application {
         var longitude_label = new Gtk.Label ("Longitude (deg):") {
             halign = Gtk.Align.START,
         };
-        longitude_spin = new Gtk.SpinButton.with_range (-180.0, 180.0, 1.0) {
+        var longitude_spin = new Gtk.SpinButton.with_range (-180.0, 180.0, 1.0) {
             value = longitude,
             digits = 1,
         };
@@ -110,7 +107,7 @@ public class SolarAngleApp : Gtk.Application {
         var timezone_label = new Gtk.Label ("Timezone (hour):") {
             halign = Gtk.Align.START,
         };
-        timezone_spin = new Gtk.SpinButton.with_range (-12.0, 14.0, 0.5) {
+        var timezone_spin = new Gtk.SpinButton.with_range (-12.0, 14.0, 0.5) {
             value = timezone_offset_hours,
             digits = 1,
         };
@@ -134,7 +131,7 @@ public class SolarAngleApp : Gtk.Application {
             use_markup = true,
             halign = Gtk.Align.START,
         };
-        calendar = new Gtk.Calendar ();
+        var calendar = new Gtk.Calendar ();
         calendar.day_selected.connect (() => {
             selected_date = calendar.get_date ();
             update_plot_data ();
@@ -145,16 +142,27 @@ public class SolarAngleApp : Gtk.Application {
         date_group.append (calendar);
 
         var export_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var export_label = new Gtk.Label ("<b>Export Chart</b>") {
+        var export_label = new Gtk.Label ("<b>Export</b>") {
             use_markup = true,
             halign = Gtk.Align.START,
         };
 
-        export_button = new Gtk.Button.with_label ("Export Image");
+        // Create horizontal box for buttons
+        var export_buttons_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 5) {
+            homogeneous = true,
+        };
+
+        var export_button = new Gtk.Button.with_label ("Export Image");
         export_button.clicked.connect (on_export_clicked);
 
+        var export_csv_button = new Gtk.Button.with_label ("Export CSV");
+        export_csv_button.clicked.connect (on_export_csv_clicked);
+
+        export_buttons_box.append (export_button);
+        export_buttons_box.append (export_csv_button);
+
         export_group.append (export_label);
-        export_group.append (export_button);
+        export_group.append (export_buttons_box);
 
         // Add click info display group
         var click_info_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
@@ -162,10 +170,9 @@ public class SolarAngleApp : Gtk.Application {
             use_markup = true,
             halign = Gtk.Align.START,
         };
-        click_info_label = new Gtk.Label ("Click on chart to view data") {
+        // Initial click info label (Use an extra newline for better spacing)
+        click_info_label = new Gtk.Label ("Click on chart to view data\n") {
             halign = Gtk.Align.START,
-            wrap = true,
-            wrap_mode = Pango.WrapMode.WORD,
         };
         click_info_group.append (click_info_title);
         click_info_group.append (click_info_label);
@@ -242,7 +249,7 @@ public class SolarAngleApp : Gtk.Application {
             double ha_rad = ha_deg * DEG2RAD;
 
             // cos(phi): cosine of zenith angle via spherical trig
-            double cos_phi = sin_lat * Math.sin (decl_rad) + cos_lat * Math.cos (decl_rad) * Math.cos(ha_rad);
+            double cos_phi = sin_lat * Math.sin (decl_rad) + cos_lat * Math.cos (decl_rad) * Math.cos (ha_rad);
             // clamp to valid range
             if (cos_phi > 1.0) cos_phi = 1.0;
             if (cos_phi < -1.0) cos_phi = -1.0;
@@ -266,7 +273,7 @@ public class SolarAngleApp : Gtk.Application {
         
         // Clear click point when data updates
         has_click_point = false;
-        click_info_label.label = "Click on chart to view data";
+        click_info_label.label = "Click on chart to view data\n";
     }
 
     /**
@@ -280,21 +287,20 @@ public class SolarAngleApp : Gtk.Application {
         int width = drawing_area.get_width ();
         int height = drawing_area.get_height ();
 
-        int ml = 70, mr = 20, mt = 50, mb = 70;
-        int pw = width - ml - mr, ph = height - mt - mb;
-        double y_min = -90, y_max = 90;
+        int chart_width = width - MARGIN_LEFT - MARGIN_RIGHT;
+        int chart_height = height - MARGIN_TOP - MARGIN_BOTTOM;
 
         // Check if click is within plot area and single click
-        if (x >= ml && x <= width - mr && y >= mt && y <= height - mb && n_press == 1) {
+        if (x >= MARGIN_LEFT && x <= width - MARGIN_RIGHT && y >= MARGIN_TOP && y <= height - MARGIN_BOTTOM && n_press == 1) {
             clicked_x = x;
 
             // Convert coordinates to time and get corresponding angle
-            double time_hours = (x - ml) / pw * 24.0;
+            double time_hours = (x - MARGIN_LEFT) / chart_width * 24.0;
             int time_minutes = (int) (time_hours * 60) % RESOLUTION_PER_MIN;
             double angle = sun_angles[time_minutes];
 
             // Calculate Y coordinate on the curve for this angle
-            corresponding_y = mt + ph * (1 - (angle - y_min) / (y_max - y_min));
+            corresponding_y = MARGIN_TOP + chart_height * (90.0 - angle) / 180.0;
             has_click_point = true;
 
             // Format time display
@@ -302,7 +308,7 @@ public class SolarAngleApp : Gtk.Application {
             int minutes = (int) ((time_hours - hours) * 60);
 
             // Update info label
-            string info_text = "Time: %02d:%02d\nSolar Elevation: %.1f°".printf(
+            string info_text = "Time: %02d:%02d\nSolar Elevation: %.1f°".printf (
                 hours, minutes, angle
             );
 
@@ -311,85 +317,88 @@ public class SolarAngleApp : Gtk.Application {
         } else {
             // Double click or outside plot area - clear point
             has_click_point = false;
-            click_info_label.label = "Click on chart to view data";
+            click_info_label.label = "Click on chart to view data\n";
             drawing_area.queue_draw ();
         }
     }
 
     /**
      * Draws the solar elevation chart.
+     *
+     * @param area The drawing area widget.
+     * @param cr The Cairo context for drawing.
+     * @param width The width of the drawing area.
+     * @param height The height of the drawing area.
      */
     private void draw_sun_angle_chart (Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
         // Fill background
         cr.set_source_rgb (1, 1, 1);
         cr.paint ();
 
-        int ml = 70, mr = 20, mt = 50, mb = 70;
-        int pw = width - ml - mr, ph = height - mt - mb;
+        int chart_width = width - MARGIN_LEFT - MARGIN_RIGHT;
+        int chart_height = height - MARGIN_TOP - MARGIN_BOTTOM;
 
-        double y_min = -90, y_max = 90;
-
-        double horizon_y = mt + ph * (1 - (0 - y_min) / (y_max - y_min));
+        double horizon_y = MARGIN_TOP + chart_height * 0.5; // 0° is at middle of -90° to +90° range
         
         // Shade area below horizon
         cr.set_source_rgba (0.7, 0.7, 0.7, 0.3);
-        cr.rectangle (ml, horizon_y, pw, height - mb - horizon_y);
+        cr.rectangle (MARGIN_LEFT, horizon_y, chart_width, height - MARGIN_BOTTOM - horizon_y);
         cr.fill ();
 
         // Draw horizontal grid every 15°
         cr.set_source_rgba (0.5, 0.5, 0.5, 0.5);
         cr.set_line_width (1);
-        for (int a = -90; a <= 90; a += 15) {
-            double yv = mt + ph * (1 - (a - y_min) / (y_max - y_min));
-            cr.move_to (ml, yv);
-            cr.line_to (width - mr, yv);
+        for (int angle = -90; angle <= 90; angle += 15) {
+            double tick_y = MARGIN_TOP + chart_height * (90 - angle) / 180.0;
+            cr.move_to (MARGIN_LEFT, tick_y);
+            cr.line_to (width - MARGIN_RIGHT, tick_y);
             cr.stroke ();
         }
         // Draw vertical grid every 2 hours
         for (int h = 0; h <= 24; h += 2) {
-            double xv = ml + pw * (h / 24.0);
-            cr.move_to (xv, mt);
-            cr.line_to (xv, height - mb);
+            double tick_x = MARGIN_LEFT + chart_width * (h / 24.0);
+            cr.move_to (tick_x, MARGIN_TOP);
+            cr.line_to (tick_x, height - MARGIN_BOTTOM);
             cr.stroke ();
         }
 
         // Draw axes and horizon
         cr.set_source_rgb (0, 0, 0);
         cr.set_line_width (2);
-        cr.move_to (ml, height - mb);
-        cr.line_to (width - mr, height - mb);
+        cr.move_to (MARGIN_LEFT, height - MARGIN_BOTTOM);
+        cr.line_to (width - MARGIN_RIGHT, height - MARGIN_BOTTOM);
         cr.stroke ();
-        cr.move_to (ml, mt);
-        cr.line_to (ml, height - mb);
+        cr.move_to (MARGIN_LEFT, MARGIN_TOP);
+        cr.line_to (MARGIN_LEFT, height - MARGIN_BOTTOM);
         cr.stroke ();
         // Horizon line
-        cr.move_to (ml, horizon_y);
-        cr.line_to (width - mr, horizon_y);
+        cr.move_to (MARGIN_LEFT, horizon_y);
+        cr.line_to (width - MARGIN_RIGHT, horizon_y);
         cr.stroke ();
 
         // Draw axis ticks and labels
         cr.set_line_width (1);
         cr.set_font_size (20);
-        for (int a = -90; a <= 90; a += 15) {
-            double yv = mt + ph * (1 - (a - y_min) / (y_max - y_min));
-            cr.move_to (ml - 5, yv);
-            cr.line_to (ml, yv);
+        for (int angle = -90; angle <= 90; angle += 15) {
+            double tick_y = MARGIN_TOP + chart_height * (90 - angle) / 180.0;
+            cr.move_to (MARGIN_LEFT - 5, tick_y);
+            cr.line_to (MARGIN_LEFT, tick_y);
             cr.stroke ();
             var te = Cairo.TextExtents ();
-            var txt = a.to_string ();
+            var txt = angle.to_string ();
             cr.text_extents (txt, out te);
-            cr.move_to (ml - 10 - te.width, yv + te.height / 2);
+            cr.move_to (MARGIN_LEFT - 10 - te.width, tick_y + te.height / 2);
             cr.show_text (txt);
         }
         for (int h = 0; h <= 24; h += 2) {
-            double xv = ml + pw * (h / 24.0);
-            cr.move_to (xv, height - mb);
-            cr.line_to (xv, height - mb + 5);
+            double tick_x = MARGIN_LEFT + chart_width * (h / 24.0);
+            cr.move_to (tick_x, height - MARGIN_BOTTOM);
+            cr.line_to (tick_x, height - MARGIN_BOTTOM + 5);
             cr.stroke ();
             var te = Cairo.TextExtents ();
             var txt = h.to_string ();
             cr.text_extents (txt, out te);
-            cr.move_to (xv - te.width / 2, height - mb + 25);
+            cr.move_to (tick_x - te.width / 2, height - MARGIN_BOTTOM + 25);
             cr.show_text (txt);
         }
 
@@ -397,8 +406,8 @@ public class SolarAngleApp : Gtk.Application {
         cr.set_source_rgb (1, 0, 0);
         cr.set_line_width (2);
         for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
-            double x = ml + pw * (i / (double)(RESOLUTION_PER_MIN - 1));
-            double y = mt + ph * (1 - (sun_angles[i] - y_min) / (y_max - y_min));
+            double x = MARGIN_LEFT + chart_width * (i / (double) (RESOLUTION_PER_MIN - 1));
+            double y = MARGIN_TOP + chart_height * (90.0 - sun_angles[i]) / 180.0;
             if (i == 0) {
                 cr.move_to (x, y);
             } else {
@@ -416,13 +425,13 @@ public class SolarAngleApp : Gtk.Application {
             // Draw vertical line to show time
             cr.set_source_rgba (0, 0, 1, 0.5);
             cr.set_line_width (1);
-            cr.move_to (clicked_x, mt);
-            cr.line_to (clicked_x, height - mb);
+            cr.move_to (clicked_x, MARGIN_TOP);
+            cr.line_to (clicked_x, height - MARGIN_BOTTOM);
             cr.stroke ();
             
             // Draw horizontal line to show angle
-            cr.move_to (ml, corresponding_y);
-            cr.line_to (width - mr, corresponding_y);
+            cr.move_to (MARGIN_LEFT, corresponding_y);
+            cr.line_to (width - MARGIN_RIGHT, corresponding_y);
             cr.stroke ();
         }
 
@@ -432,33 +441,33 @@ public class SolarAngleApp : Gtk.Application {
         string x_title = "Time (Hour)";
         Cairo.TextExtents x_ext;
         cr.text_extents (x_title, out x_ext);
-        cr.move_to ((double) width / 2 - x_ext.width / 2, height - mb + 55);
+        cr.move_to ((double) width / 2 - x_ext.width / 2, height - MARGIN_BOTTOM + 55);
         cr.show_text (x_title);
         string y_title = "Solar Elevation (°)";
         Cairo.TextExtents y_ext;
         cr.text_extents (y_title, out y_ext);
         cr.save ();
-        cr.translate (ml - 45, (double)height / 2);
+        cr.translate (MARGIN_LEFT - 45, (double)height / 2);
         cr.rotate (-Math.PI / 2);
         cr.move_to (-y_ext.width / 2, 0);
         cr.show_text (y_title);
         cr.restore ();
 
         // Draw chart captions
-        string caption_line1 = "Solar Elevation Angle - Date: %s".printf(selected_date.format("%Y-%m-%d"));
-        string caption_line2 = "Lat: %.2f°, Lon: %.1f°, TZ: UTC%+.1f".printf(latitude, longitude, timezone_offset_hours);
+        string caption_line1 = "Solar Elevation Angle - Date: %s".printf (selected_date.format ("%Y-%m-%d"));
+        string caption_line2 = "Lat: %.2f°, Lon: %.1f°, TZ: UTC%+.1f".printf (latitude, longitude, timezone_offset_hours);
         
-        cr.set_font_size(18);
+        cr.set_font_size (18);
         Cairo.TextExtents cap_ext1, cap_ext2;
-        cr.text_extents(caption_line1, out cap_ext1);
-        cr.text_extents(caption_line2, out cap_ext2);
+        cr.text_extents (caption_line1, out cap_ext1);
+        cr.text_extents (caption_line2, out cap_ext2);
 
         double total_caption_height = cap_ext1.height + cap_ext2.height + 5;
 
-        cr.move_to((width - cap_ext1.width) / 2, (mt - total_caption_height) / 2 + cap_ext1.height);
-        cr.show_text(caption_line1);
-        cr.move_to((width - cap_ext2.width) / 2, (mt - total_caption_height) / 2 + cap_ext1.height + 5 + cap_ext2.height);
-        cr.show_text(caption_line2);
+        cr.move_to ((width - cap_ext1.width) / 2, (MARGIN_TOP - total_caption_height) / 2 + cap_ext1.height);
+        cr.show_text (caption_line1);
+        cr.move_to ((width - cap_ext2.width) / 2, (MARGIN_TOP - total_caption_height) / 2 + cap_ext1.height + 5 + cap_ext2.height);
+        cr.show_text (caption_line2);
     }
 
     /**
@@ -488,18 +497,17 @@ public class SolarAngleApp : Gtk.Application {
         var file_dialog = new Gtk.FileDialog () {
             modal = true,
             initial_name = "solar_elevation_chart.png",
-            filters = filter_list
+            filters = filter_list,
         };
 
         file_dialog.save.begin (window, null, (obj, res) => {
             try {
                 var file = file_dialog.save.end (res);
                 if (file != null) {
-                    string filepath = file.get_path ();
-                    export_chart (filepath);
+                    export_chart (file);
                 }
             } catch (Error e) {
-                message ("File has not been saved: %s", e.message);
+                message ("Image file has not been saved: %s", e.message);
             }
         });
     }
@@ -510,9 +518,9 @@ public class SolarAngleApp : Gtk.Application {
      * Supports PNG, SVG, and PDF formats based on file extension.
      * Defaults to PNG if extension is not recognized.
      *
-     * @param filepath The file path where the chart should be saved.
+     * @param file The file to export the chart to.
      */
-    private void export_chart (string filepath) {
+    private void export_chart (File file) {
         int width = drawing_area.get_width ();
         int height = drawing_area.get_height ();
 
@@ -521,6 +529,7 @@ public class SolarAngleApp : Gtk.Application {
             height = 600;
         }
 
+        string filepath = file.get_path ();
         string? extension = null;
         var last_dot = filepath.last_index_of_char ('.');
         if (last_dot != -1) {
@@ -540,6 +549,72 @@ public class SolarAngleApp : Gtk.Application {
             Cairo.Context cr = new Cairo.Context (surface);
             draw_sun_angle_chart (drawing_area, cr, width, height);
             surface.write_to_png (filepath);
+        }
+    }
+
+    /**
+     * Handles CSV export button click event.
+     *
+     * Shows a file save dialog for CSV format.
+     */
+    private void on_export_csv_clicked () {
+        var csv_filter = new Gtk.FileFilter ();
+        csv_filter.name = "CSV Files";
+        csv_filter.add_mime_type ("text/csv");
+
+        var filter_list = new ListStore (typeof (Gtk.FileFilter));
+        filter_list.append (csv_filter);
+
+        var file_dialog = new Gtk.FileDialog () {
+            modal = true,
+            initial_name = "solar_elevation_data.csv",
+            filters = filter_list,
+        };
+
+        file_dialog.save.begin (window, null, (obj, res) => {
+            try {
+                var file = file_dialog.save.end (res);
+                if (file != null) {
+                    export_csv_data (file);
+                }
+            } catch (Error e) {
+                message ("CSV file has not been saved: %s", e.message);
+            }
+        });
+    }
+
+    /**
+     * Exports the solar elevation data to a CSV file.
+     *
+     * @param file The file to export the data to.
+     */
+    private void export_csv_data (File file) {
+        try {
+            var stream = file.replace (null, false, FileCreateFlags.REPLACE_DESTINATION);
+            var data_stream = new DataOutputStream (stream);
+
+            // Write CSV metadata as comments
+            data_stream.put_string ("# Solar Elevation Data\n");
+            data_stream.put_string ("# Date: %s\n".printf (selected_date.format ("%Y-%m-%d")));
+            data_stream.put_string ("# Latitude: %.2f degrees\n".printf (latitude));
+            data_stream.put_string ("# Longitude: %.1f degrees\n".printf (longitude));
+            data_stream.put_string ("# Timezone: UTC%+.2f\n".printf (timezone_offset_hours));
+            data_stream.put_string ("#\n");
+
+            // Write CSV header
+            data_stream.put_string ("Time,Solar Elevation (degrees)\n");
+
+            // Write data points
+            for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
+                int hours = i / 60;
+                int minutes = i % 60;
+                string time_str = "%02d:%02d".printf (hours, minutes);
+                data_stream.put_string ("%s,%.3f\n".printf (time_str, sun_angles[i]));
+            }
+
+            data_stream.close ();
+        } catch (Error e) {
+            message ("Error saving CSV file: %s", e.message);
         }
     }
 
