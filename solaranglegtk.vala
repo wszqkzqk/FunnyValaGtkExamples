@@ -20,11 +20,15 @@ public class SolarAngleApp : Gtk.Application {
     private Gtk.SpinButton timezone_spin;
     private Gtk.Calendar calendar;
     private Gtk.Button export_button;
+    private Gtk.Label click_info_label;
+    private DateTime selected_date;
     private double latitude = 0.0;
     private double longitude = 0.0;
     private double timezone_offset_hours = 0.0;
-    private DateTime selected_date;
     private double sun_angles[RESOLUTION_PER_MIN];
+    private double clicked_x = 0.0;
+    private double corresponding_y = 0.0;
+    private bool has_click_point = false;
 
     /**
      * Creates a new SolarAngleApp instance.
@@ -152,9 +156,24 @@ public class SolarAngleApp : Gtk.Application {
         export_group.append (export_label);
         export_group.append (export_button);
 
-        left_panel.append (location_time_group); // Changed from latitude_group
+        // Add click info display group
+        var click_info_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
+        var click_info_title = new Gtk.Label ("<b>Selected Point</b>") {
+            use_markup = true,
+            halign = Gtk.Align.START,
+        };
+        click_info_label = new Gtk.Label ("Click on chart to view data") {
+            halign = Gtk.Align.START,
+            wrap = true,
+            wrap_mode = Pango.WrapMode.WORD,
+        };
+        click_info_group.append (click_info_title);
+        click_info_group.append (click_info_label);
+
+        left_panel.append (location_time_group);
         left_panel.append (date_group);
         left_panel.append (export_group);
+        left_panel.append (click_info_group);
 
         drawing_area = new Gtk.DrawingArea () {
             hexpand = true,
@@ -163,6 +182,11 @@ public class SolarAngleApp : Gtk.Application {
             height_request = 500,
         };
         drawing_area.set_draw_func (draw_sun_angle_chart);
+
+        // Add click event controller
+        var click_controller = new Gtk.GestureClick ();
+        click_controller.pressed.connect (on_chart_clicked);
+        drawing_area.add_controller (click_controller);
 
         main_box.append (left_panel);
         main_box.append (drawing_area);
@@ -239,6 +263,57 @@ public class SolarAngleApp : Gtk.Application {
         double latitude_rad = latitude * DEG2RAD;
         int year = selected_date.get_year ();
         generate_sun_angles (latitude_rad, day_of_year, year, longitude, timezone_offset_hours);
+        
+        // Clear click point when data updates
+        has_click_point = false;
+        click_info_label.label = "Click on chart to view data";
+    }
+
+    /**
+     * Handles mouse click events on the chart.
+     *
+     * @param n_press Number of button presses.
+     * @param x X coordinate of the click.
+     * @param y Y coordinate of the click.
+     */
+    private void on_chart_clicked (int n_press, double x, double y) {
+        int width = drawing_area.get_width ();
+        int height = drawing_area.get_height ();
+
+        int ml = 70, mr = 20, mt = 50, mb = 70;
+        int pw = width - ml - mr, ph = height - mt - mb;
+        double y_min = -90, y_max = 90;
+
+        // Check if click is within plot area and single click
+        if (x >= ml && x <= width - mr && y >= mt && y <= height - mb && n_press == 1) {
+            clicked_x = x;
+
+            // Convert coordinates to time and get corresponding angle
+            double time_hours = (x - ml) / pw * 24.0;
+            int time_minutes = (int) (time_hours * 60) % RESOLUTION_PER_MIN;
+            double angle = sun_angles[time_minutes];
+
+            // Calculate Y coordinate on the curve for this angle
+            corresponding_y = mt + ph * (1 - (angle - y_min) / (y_max - y_min));
+            has_click_point = true;
+
+            // Format time display
+            int hours = (int) time_hours;
+            int minutes = (int) ((time_hours - hours) * 60);
+
+            // Update info label
+            string info_text = "Time: %02d:%02d\nSolar Elevation: %.1f°".printf(
+                hours, minutes, angle
+            );
+
+            click_info_label.label = info_text;
+            drawing_area.queue_draw ();
+        } else {
+            // Double click or outside plot area - clear point
+            has_click_point = false;
+            click_info_label.label = "Click on chart to view data";
+            drawing_area.queue_draw ();
+        }
     }
 
     /**
@@ -331,6 +406,25 @@ public class SolarAngleApp : Gtk.Application {
             }
         }
         cr.stroke ();
+
+        // Draw click point if exists
+        if (has_click_point) {
+            cr.set_source_rgba (0, 0, 1, 0.8);
+            cr.arc (clicked_x, corresponding_y, 5, 0, 2 * Math.PI);
+            cr.fill ();
+            
+            // Draw vertical line to show time
+            cr.set_source_rgba (0, 0, 1, 0.5);
+            cr.set_line_width (1);
+            cr.move_to (clicked_x, mt);
+            cr.line_to (clicked_x, height - mb);
+            cr.stroke ();
+            
+            // Draw horizontal line to show angle
+            cr.move_to (ml, corresponding_y);
+            cr.line_to (width - mr, corresponding_y);
+            cr.stroke ();
+        }
 
         // Draw axis titles
         cr.set_source_rgb (0, 0, 0);
