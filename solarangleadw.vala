@@ -1,14 +1,14 @@
-#!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -O2 -X -march=native -X -pipe
+#!/usr/bin/env -S vala --pkg=gtk4 --pkg=libadwaita-1 -X -lm -X -O2 -X -march=native -X -pipe
 
 /**
  * Solar Angle Calculator Application.
  *
- * A GTK4 application that calculates and visualizes solar elevation angles
+ * A libadwaita application that calculates and visualizes solar elevation angles
  * throughout the day for a given location and date. The application provides
  * an interactive interface for setting latitude, longitude, timezone, and date,
  * and displays a real-time chart of solar elevation angles with export capabilities.
  */
-public class SolarAngleApp : Gtk.Application {
+public class SolarAngleApp : Adw.Application {
     // Constants for solar angle calculations
     private const double DEG2RAD = Math.PI / 180.0;
     private const double RAD2DEG = 180.0 / Math.PI;
@@ -19,7 +19,7 @@ public class SolarAngleApp : Gtk.Application {
     private const int MARGIN_TOP = 50;
     private const int MARGIN_BOTTOM = 70;
 
-    private Gtk.ApplicationWindow window;
+    private Adw.ApplicationWindow window;
     private Gtk.DrawingArea drawing_area;
     private Gtk.Label click_info_label;
     private DateTime selected_date;
@@ -31,6 +31,50 @@ public class SolarAngleApp : Gtk.Application {
     private double corresponding_y = 0.0;
     private bool has_click_point = false;
 
+    // Color theme struct for chart drawing
+    private struct ThemeColors {
+        // Background colors
+        double bg_r; double bg_g; double bg_b;
+        // Grid colors with alpha
+        double grid_r; double grid_g; double grid_b; double grid_a;
+        // Axis colors
+        double axis_r; double axis_g; double axis_b;
+        // Text colors
+        double text_r; double text_g; double text_b;
+        // Curve colors
+        double curve_r; double curve_g; double curve_b;
+        // Shaded area colors with alpha
+        double shade_r; double shade_g; double shade_b; double shade_a;
+        // Click point colors
+        double point_r; double point_g; double point_b;
+        // Guide line colors with alpha
+        double line_r; double line_g; double line_b; double line_a;
+    }
+
+    // Light theme color constants
+    private ThemeColors LIGHT_THEME = {
+        bg_r: 1.0, bg_g: 1.0, bg_b: 1.0,                    // White background
+        grid_r: 0.5, grid_g: 0.5, grid_b: 0.5, grid_a: 0.5, // Gray grid
+        axis_r: 0.0, axis_g: 0.0, axis_b: 0.0,              // Black axes
+        text_r: 0.0, text_g: 0.0, text_b: 0.0,              // Black text
+        curve_r: 1.0, curve_g: 0.0, curve_b: 0.0,           // Red curve
+        shade_r: 0.7, shade_g: 0.7, shade_b: 0.7, shade_a: 0.3, // Light gray shade
+        point_r: 0.0, point_g: 0.0, point_b: 1.0,           // Blue point
+        line_r: 0.0, line_g: 0.0, line_b: 1.0, line_a: 0.5  // Blue guide lines
+    };
+
+    // Dark theme color constants
+    private ThemeColors DARK_THEME = {
+        bg_r: 0.0, bg_g: 0.0, bg_b: 0.0,                    // Black background
+        grid_r: 0.5, grid_g: 0.5, grid_b: 0.5, grid_a: 0.5, // Light gray grid
+        axis_r: 1.0, axis_g: 1.0, axis_b: 1.0,              // White axes
+        text_r: 1.0, text_g: 1.0, text_b: 1.0,              // White text
+        curve_r: 1.0, curve_g: 0.0, curve_b: 0.0,           // Bright red curve
+        shade_r: 0.3, shade_g: 0.3, shade_b: 0.3, shade_a: 0.7, // Dark gray shade
+        point_r: 0.3, point_g: 0.7, point_b: 1.0,           // Light blue point
+        line_r: 0.3, line_g: 0.7, line_b: 1.0, line_a: 0.7  // Light blue guide lines
+    };
+
     /**
      * Creates a new SolarAngleApp instance.
      *
@@ -38,7 +82,7 @@ public class SolarAngleApp : Gtk.Application {
      * the selected date to the current local date.
      */
     public SolarAngleApp () {
-        Object (application_id: "com.github.wszqkzqk.SolarAngleGtk");
+        Object (application_id: "com.github.wszqkzqk.SolarAngleAdw");
         selected_date = new DateTime.now_local ();
     }
 
@@ -49,133 +93,173 @@ public class SolarAngleApp : Gtk.Application {
      * and initializes the plot data with current settings.
      */
     protected override void activate () {
-        window = new Gtk.ApplicationWindow (this) {
+        window = new Adw.ApplicationWindow (this) {
             title = "Solar Angle Calculator",
-            default_width = 1000,
-            default_height = 700,
         };
+        
+        // Create header bar
+        var header_bar = new Adw.HeaderBar () {
+            title_widget = new Adw.WindowTitle ("Solar Angle Calculator", ""),
+        };
+
+        // Add dark mode toggle button
+        var dark_mode_button = new Gtk.ToggleButton () {
+            icon_name = "weather-clear-night-symbolic",
+            tooltip_text = "Toggle dark mode",
+            active = style_manager.dark,
+        };
+        dark_mode_button.toggled.connect (() => {
+            if (dark_mode_button.active) {
+                style_manager.color_scheme = Adw.ColorScheme.FORCE_DARK;
+            } else {
+                style_manager.color_scheme = Adw.ColorScheme.FORCE_LIGHT;
+            }
+            drawing_area.queue_draw ();
+        });
+
+        // Listen for system theme changes
+        style_manager.notify["dark"].connect (() => {
+            drawing_area.queue_draw ();
+        });
+
+        header_bar.pack_end (dark_mode_button);
+
+        // Create toolbar view to hold header bar and content
+        var toolbar_view = new Adw.ToolbarView ();
+        toolbar_view.add_top_bar (header_bar);
 
         var main_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
 
-        var left_panel = new Gtk.Box (Gtk.Orientation.VERTICAL, 15) {
+        // Remove scrolled window, use direct left panel
+        var left_panel = new Gtk.Box (Gtk.Orientation.VERTICAL, 12) {
             hexpand = false,
-            margin_start = 10,
-            margin_end = 10,
-            margin_top = 10,
-            margin_bottom = 10,
+            vexpand = true,
+            width_request = 320,
+            margin_start = 12,
+            margin_end = 12,
+            margin_top = 12,
+            margin_bottom = 12,
         };
 
-        var location_time_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var location_time_label = new Gtk.Label ("<b>Location and Time Settings</b>") {
-            use_markup = true,
-            halign = Gtk.Align.START,
-        };
-        location_time_group.append (location_time_label);
-
-        var settings_grid = new Gtk.Grid () {
-            column_spacing = 10,
-            row_spacing = 8,
-            margin_top = 5,
+        // Location and Time Settings Group
+        var location_time_group = new Adw.PreferencesGroup () {
+            title = "Location and Time Settings",
         };
 
-        var latitude_label = new Gtk.Label ("Latitude (deg):") {
-            halign = Gtk.Align.START,
-        };
-        var latitude_spin = new Gtk.SpinButton.with_range (-90, 90, 0.1) {
+        var latitude_row = new Adw.SpinRow.with_range (-90, 90, 0.1) {
+            title = "Latitude",
+            subtitle = "Degrees",
             value = latitude,
             digits = 2,
         };
-        latitude_spin.value_changed.connect (() => {
-            latitude = latitude_spin.value;
+        latitude_row.notify["value"].connect (() => {
+            latitude = latitude_row.value;
             update_plot_data ();
             drawing_area.queue_draw ();
         });
 
-        var longitude_label = new Gtk.Label ("Longitude (deg):") {
-            halign = Gtk.Align.START,
-        };
-        var longitude_spin = new Gtk.SpinButton.with_range (-180.0, 180.0, 1.0) {
+        var longitude_row = new Adw.SpinRow.with_range (-180.0, 180.0, 1.0) {
+            title = "Longitude",
+            subtitle = "Degrees",
             value = longitude,
             digits = 1,
         };
-        longitude_spin.value_changed.connect (() => {
-            longitude = longitude_spin.value;
+        longitude_row.notify["value"].connect (() => {
+            longitude = longitude_row.value;
             update_plot_data ();
             drawing_area.queue_draw ();
         });
 
-        var timezone_label = new Gtk.Label ("Timezone (hour):") {
-            halign = Gtk.Align.START,
-        };
-        var timezone_spin = new Gtk.SpinButton.with_range (-12.0, 14.0, 0.5) {
+        var timezone_row = new Adw.SpinRow.with_range (-12.0, 14.0, 0.5) {
+            title = "Timezone",
+            subtitle = "Hours from UTC",
             value = timezone_offset_hours,
             digits = 1,
         };
-        timezone_spin.value_changed.connect (() => {
-            timezone_offset_hours = timezone_spin.value;
+        timezone_row.notify["value"].connect (() => {
+            timezone_offset_hours = timezone_row.value;
             update_plot_data ();
             drawing_area.queue_draw ();
         });
 
-        settings_grid.attach (latitude_label, 0, 0, 1, 1);
-        settings_grid.attach (latitude_spin, 1, 0, 1, 1);
-        settings_grid.attach (longitude_label, 0, 1, 1, 1);
-        settings_grid.attach (longitude_spin, 1, 1, 1, 1);
-        settings_grid.attach (timezone_label, 0, 2, 1, 1);
-        settings_grid.attach (timezone_spin, 1, 2, 1, 1);
+        location_time_group.add (latitude_row);
+        location_time_group.add (longitude_row);
+        location_time_group.add (timezone_row);
 
-        location_time_group.append (settings_grid);
-
-        var date_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var date_label = new Gtk.Label ("<b>Date Selection</b>") {
-            use_markup = true,
-            halign = Gtk.Align.START,
+        // Date Selection Group
+        var date_group = new Adw.PreferencesGroup () {
+            title = "Date Selection",
         };
-        var calendar = new Gtk.Calendar ();
+
+        var calendar = new Gtk.Calendar () {
+            margin_start = 12,
+            margin_end = 12,
+            margin_top = 6,
+            margin_bottom = 6,
+        };
         calendar.day_selected.connect (() => {
             selected_date = calendar.get_date ();
             update_plot_data ();
             drawing_area.queue_draw ();
         });
 
-        date_group.append (date_label);
-        date_group.append (calendar);
+        var calendar_row = new Adw.ActionRow ();
+        calendar_row.child = calendar;
+        date_group.add (calendar_row);
 
-        var export_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var export_label = new Gtk.Label ("<b>Export</b>") {
-            use_markup = true,
-            halign = Gtk.Align.START,
+        // Export Group
+        var export_group = new Adw.PreferencesGroup () {
+            title = "Export",
         };
 
-        // Create horizontal box for buttons
-        var export_buttons_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 5) {
-            homogeneous = true,
+        var export_image_row = new Adw.ActionRow () {
+            title = "Export Image",
+            subtitle = "Save chart as PNG, SVG, or PDF",
+            activatable = true,
         };
+        var export_image_button = new Gtk.Button () {
+            icon_name = "document-save-symbolic",
+            valign = Gtk.Align.CENTER,
+            css_classes = { "flat" },
+        };
+        export_image_button.clicked.connect (on_export_clicked);
+        export_image_row.add_suffix (export_image_button);
+        export_image_row.activated.connect (on_export_clicked);
 
-        var export_button = new Gtk.Button.with_label ("Export Image");
-        export_button.clicked.connect (on_export_clicked);
-
-        var export_csv_button = new Gtk.Button.with_label ("Export CSV");
+        var export_csv_row = new Adw.ActionRow () {
+            title = "Export CSV",
+            subtitle = "Save data as CSV file",
+            activatable = true,
+        };
+        var export_csv_button = new Gtk.Button () {
+            icon_name = "x-office-spreadsheet-symbolic",
+            valign = Gtk.Align.CENTER,
+            css_classes = { "flat" },
+        };
         export_csv_button.clicked.connect (on_export_csv_clicked);
+        export_csv_row.add_suffix (export_csv_button);
+        export_csv_row.activated.connect (on_export_csv_clicked);
 
-        export_buttons_box.append (export_button);
-        export_buttons_box.append (export_csv_button);
+        export_group.add (export_image_row);
+        export_group.add (export_csv_row);
 
-        export_group.append (export_label);
-        export_group.append (export_buttons_box);
-
-        // Add click info display group
-        var click_info_group = new Gtk.Box (Gtk.Orientation.VERTICAL, 8);
-        var click_info_title = new Gtk.Label ("<b>Selected Point</b>") {
-            use_markup = true,
-            halign = Gtk.Align.START,
+        // Click Info Group
+        var click_info_group = new Adw.PreferencesGroup () {
+            title = "Selected Point",
         };
-        // Initial click info label (Use an extra newline for better spacing)
+
         click_info_label = new Gtk.Label ("Click on chart to view data\n") {
             halign = Gtk.Align.START,
+            margin_start = 12,
+            margin_end = 12,
+            margin_top = 6,
+            margin_bottom = 6,
+            wrap = true,
         };
-        click_info_group.append (click_info_title);
-        click_info_group.append (click_info_label);
+
+        var click_info_row = new Adw.ActionRow ();
+        click_info_row.child = click_info_label;
+        click_info_group.add (click_info_row);
 
         left_panel.append (location_time_group);
         left_panel.append (date_group);
@@ -198,9 +282,11 @@ public class SolarAngleApp : Gtk.Application {
         main_box.append (left_panel);
         main_box.append (drawing_area);
 
+        toolbar_view.content = main_box;
+
         update_plot_data ();
 
-        window.child = main_box;
+        window.content = toolbar_view;
         window.present ();
     }
 
@@ -331,8 +417,10 @@ public class SolarAngleApp : Gtk.Application {
      * @param height The height of the drawing area.
      */
     private void draw_sun_angle_chart (Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        ThemeColors colors = style_manager.dark ? DARK_THEME : LIGHT_THEME;
+
         // Fill background
-        cr.set_source_rgb (1, 1, 1);
+        cr.set_source_rgb (colors.bg_r, colors.bg_g, colors.bg_b);
         cr.paint ();
 
         int chart_width = width - MARGIN_LEFT - MARGIN_RIGHT;
@@ -341,12 +429,12 @@ public class SolarAngleApp : Gtk.Application {
         double horizon_y = MARGIN_TOP + chart_height * 0.5; // 0° is at middle of -90° to +90° range
         
         // Shade area below horizon
-        cr.set_source_rgba (0.7, 0.7, 0.7, 0.3);
+        cr.set_source_rgba (colors.shade_r, colors.shade_g, colors.shade_b, colors.shade_a);
         cr.rectangle (MARGIN_LEFT, horizon_y, chart_width, height - MARGIN_BOTTOM - horizon_y);
         cr.fill ();
 
         // Draw horizontal grid every 15°
-        cr.set_source_rgba (0.5, 0.5, 0.5, 0.5);
+        cr.set_source_rgba (colors.grid_r, colors.grid_g, colors.grid_b, colors.grid_a);
         cr.set_line_width (1);
         for (int angle = -90; angle <= 90; angle += 15) {
             double tick_y = MARGIN_TOP + chart_height * (90 - angle) / 180.0;
@@ -363,7 +451,7 @@ public class SolarAngleApp : Gtk.Application {
         }
 
         // Draw axes and horizon
-        cr.set_source_rgb (0, 0, 0);
+        cr.set_source_rgb (colors.axis_r, colors.axis_g, colors.axis_b);
         cr.set_line_width (2);
         cr.move_to (MARGIN_LEFT, height - MARGIN_BOTTOM);
         cr.line_to (width - MARGIN_RIGHT, height - MARGIN_BOTTOM);
@@ -377,6 +465,7 @@ public class SolarAngleApp : Gtk.Application {
         cr.stroke ();
 
         // Draw axis ticks and labels
+        cr.set_source_rgb (colors.text_r, colors.text_g, colors.text_b);
         cr.set_line_width (1);
         cr.set_font_size (20);
         for (int angle = -90; angle <= 90; angle += 15) {
@@ -403,7 +492,7 @@ public class SolarAngleApp : Gtk.Application {
         }
 
         // Plot solar elevation curve
-        cr.set_source_rgb (1, 0, 0);
+        cr.set_source_rgb (colors.curve_r, colors.curve_g, colors.curve_b);
         cr.set_line_width (2);
         for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
             double x = MARGIN_LEFT + chart_width * (i / (double) (RESOLUTION_PER_MIN - 1));
@@ -418,12 +507,12 @@ public class SolarAngleApp : Gtk.Application {
 
         // Draw click point if exists
         if (has_click_point) {
-            cr.set_source_rgba (0, 0, 1, 0.8);
+            cr.set_source_rgba (colors.point_r, colors.point_g, colors.point_b, 0.8);
             cr.arc (clicked_x, corresponding_y, 5, 0, 2 * Math.PI);
             cr.fill ();
             
             // Draw vertical line to show time
-            cr.set_source_rgba (0, 0, 1, 0.5);
+            cr.set_source_rgba (colors.line_r, colors.line_g, colors.line_b, colors.line_a);
             cr.set_line_width (1);
             cr.move_to (clicked_x, MARGIN_TOP);
             cr.line_to (clicked_x, height - MARGIN_BOTTOM);
@@ -436,7 +525,7 @@ public class SolarAngleApp : Gtk.Application {
         }
 
         // Draw axis titles
-        cr.set_source_rgb (0, 0, 0);
+        cr.set_source_rgb (colors.text_r, colors.text_g, colors.text_b);
         cr.set_font_size (20);
         string x_title = "Time (Hour)";
         Cairo.TextExtents x_ext;
