@@ -27,8 +27,8 @@ public class SolarAngleApp : Adw.Application {
     private double latitude = 0.0;
     private double longitude = 0.0;
     private double timezone_offset_hours = 0.0;
-    private double clicked_x = 0.0;
-    private double corresponding_y = 0.0;
+    private double clicked_time_hours = 0.0;
+    private double corresponding_angle = 0.0;
     private bool has_click_point = false;
 
     // Color theme struct for chart drawing
@@ -130,7 +130,6 @@ public class SolarAngleApp : Adw.Application {
 
         var main_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
 
-        // Remove scrolled window, use direct left panel
         var left_panel = new Gtk.Box (Gtk.Orientation.VERTICAL, 12) {
             hexpand = false,
             vexpand = true,
@@ -158,11 +157,11 @@ public class SolarAngleApp : Adw.Application {
             drawing_area.queue_draw ();
         });
 
-        var longitude_row = new Adw.SpinRow.with_range (-180.0, 180.0, 1.0) {
+        var longitude_row = new Adw.SpinRow.with_range (-180.0, 180.0, 0.1) {
             title = "Longitude",
             subtitle = "Degrees",
             value = longitude,
-            digits = 1,
+            digits = 2,
         };
         longitude_row.notify["value"].connect (() => {
             longitude = longitude_row.value;
@@ -174,7 +173,7 @@ public class SolarAngleApp : Adw.Application {
             title = "Timezone",
             subtitle = "Hours from UTC",
             value = timezone_offset_hours,
-            digits = 1,
+            digits = 2,
         };
         timezone_row.notify["value"].connect (() => {
             timezone_offset_hours = timezone_row.value;
@@ -374,28 +373,22 @@ public class SolarAngleApp : Adw.Application {
         int height = drawing_area.get_height ();
 
         int chart_width = width - MARGIN_LEFT - MARGIN_RIGHT;
-        int chart_height = height - MARGIN_TOP - MARGIN_BOTTOM;
 
         // Check if click is within plot area and single click
         if (x >= MARGIN_LEFT && x <= width - MARGIN_RIGHT && y >= MARGIN_TOP && y <= height - MARGIN_BOTTOM && n_press == 1) {
-            clicked_x = x;
-
             // Convert coordinates to time and get corresponding angle
-            double time_hours = (x - MARGIN_LEFT) / chart_width * 24.0;
-            int time_minutes = (int) (time_hours * 60) % RESOLUTION_PER_MIN;
-            double angle = sun_angles[time_minutes];
-
-            // Calculate Y coordinate on the curve for this angle
-            corresponding_y = MARGIN_TOP + chart_height * (90.0 - angle) / 180.0;
+            clicked_time_hours = (x - MARGIN_LEFT) / chart_width * 24.0;
+            int time_minutes = (int) (clicked_time_hours * 60) % RESOLUTION_PER_MIN;
+            corresponding_angle = sun_angles[time_minutes];
             has_click_point = true;
 
             // Format time display
-            int hours = (int) time_hours;
-            int minutes = (int) ((time_hours - hours) * 60);
+            int hours = (int) clicked_time_hours;
+            int minutes = (int) ((clicked_time_hours - hours) * 60);
 
             // Update info label
             string info_text = "Time: %02d:%02d\nSolar Elevation: %.1f°".printf (
-                hours, minutes, angle
+                hours, minutes, corresponding_angle
             );
 
             click_info_label.label = info_text;
@@ -507,6 +500,10 @@ public class SolarAngleApp : Adw.Application {
 
         // Draw click point if exists
         if (has_click_point) {
+            // Calculate current coordinates from stored time and angle
+            double clicked_x = MARGIN_LEFT + chart_width * (clicked_time_hours / 24.0);
+            double corresponding_y = MARGIN_TOP + chart_height * (90.0 - corresponding_angle) / 180.0;
+
             cr.set_source_rgba (colors.point_r, colors.point_g, colors.point_b, 0.8);
             cr.arc (clicked_x, corresponding_y, 5, 0, 2 * Math.PI);
             cr.fill ();
@@ -544,7 +541,7 @@ public class SolarAngleApp : Adw.Application {
 
         // Draw chart captions
         string caption_line1 = "Solar Elevation Angle - Date: %s".printf (selected_date.format ("%Y-%m-%d"));
-        string caption_line2 = "Lat: %.2f°, Lon: %.1f°, TZ: UTC%+.1f".printf (latitude, longitude, timezone_offset_hours);
+        string caption_line2 = "Lat: %.2f°, Lon: %.2f°, TZ: UTC%+.2f".printf (latitude, longitude, timezone_offset_hours);
         
         cr.set_font_size (18);
         Cairo.TextExtents cap_ext1, cap_ext2;
@@ -686,7 +683,7 @@ public class SolarAngleApp : Adw.Application {
             data_stream.put_string ("# Solar Elevation Data\n");
             data_stream.put_string ("# Date: %s\n".printf (selected_date.format ("%Y-%m-%d")));
             data_stream.put_string ("# Latitude: %.2f degrees\n".printf (latitude));
-            data_stream.put_string ("# Longitude: %.1f degrees\n".printf (longitude));
+            data_stream.put_string ("# Longitude: %.2f degrees\n".printf (longitude));
             data_stream.put_string ("# Timezone: UTC%+.2f\n".printf (timezone_offset_hours));
             data_stream.put_string ("#\n");
 
@@ -697,8 +694,9 @@ public class SolarAngleApp : Adw.Application {
             for (int i = 0; i < RESOLUTION_PER_MIN; i += 1) {
                 int hours = i / 60;
                 int minutes = i % 60;
-                string time_str = "%02d:%02d".printf (hours, minutes);
-                data_stream.put_string ("%s,%.3f\n".printf (time_str, sun_angles[i]));
+                data_stream.put_string (
+                    "%02d:%02d,%.3f\n".printf (hours, minutes, sun_angles[i])
+                );
             }
 
             data_stream.close ();
