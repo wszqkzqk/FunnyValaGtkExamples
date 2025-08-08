@@ -642,7 +642,7 @@ public class SolarAngleApp : Gtk.Application {
 
             data_stream.close ();
         } catch (Error e) {
-            message ("Error saving CSV file: %s", e.message);
+            show_error_dialog ("CSV export failed", e.message);
         }
     }
 
@@ -671,7 +671,7 @@ public class SolarAngleApp : Gtk.Application {
             try {
                 get_location_async.end (res);
             } catch (Error e) {
-                show_location_error (e.message);
+                show_error_dialog ("Location detection failed", e.message);
             }
             location_button.sensitive = true;
             location_spinner.stop ();
@@ -762,17 +762,18 @@ public class SolarAngleApp : Gtk.Application {
     }
 
     /**
-     * Shows a location detection error to the user.
+     * Shows a generic error dialog and logs the error message.
      *
+     * @param title The title of the error dialog.
      * @param error_message The error message to display.
      */
-    private void show_location_error (string error_message) {
-        // Use Gtk.AlertDialog for GTK 4.10+
+    private void show_error_dialog (string title, string error_message) {
         var dialog = new Gtk.AlertDialog (
             "%s: %s",
-            "Location detection failed",
+            title,
             error_message
         );
         dialog.show (window);
+        message ("%s: %s", title, error_message);
     }
 }
