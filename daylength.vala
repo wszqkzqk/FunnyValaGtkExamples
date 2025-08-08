@@ -1,4 +1,5 @@
 #!/usr/bin/env -S vala -X -lm -X -O2 -X -march=native -X -pipe
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 /**
  * Computes solar declination (δ) in radians using NOAA's empirical formula.

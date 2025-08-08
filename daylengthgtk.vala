@@ -1,4 +1,5 @@
 #!/usr/bin/env -S vala --pkg=gtk4 -X -lm -X -O2 -X -march=native -X -pipe
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 // Helper functions to compute day-of-year, solar declination and day length
 
