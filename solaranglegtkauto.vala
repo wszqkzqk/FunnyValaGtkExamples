@@ -535,6 +535,7 @@ public class SolarAngleApp : Gtk.Application {
                     export_chart (file);
                 }
             } catch (Error e) {
+                // Dismissed by user, so do not show alert dialog
                 message ("Image file has not been saved: %s", e.message);
             }
         });
@@ -606,6 +607,7 @@ public class SolarAngleApp : Gtk.Application {
                     export_csv_data (file);
                 }
             } catch (Error e) {
+                // Dismissed by user, so do not show alert dialog
                 message ("CSV file has not been saved: %s", e.message);
             }
         });
@@ -685,37 +687,18 @@ public class SolarAngleApp : Gtk.Application {
      */
     private async void get_location_async () throws IOError {
         var file = File.new_for_uri ("https://ipapi.co/json/");
+        var cancellable = new Cancellable ();
+
+        // Set up a 5-second timeout
+        Timeout.add_seconds (5, () => {
+            cancellable.cancel ();
+            return false;
+        });
 
         try {
-            var stream = yield file.read_async (Priority.DEFAULT, null);
-            var data_stream = new DataInputStream (stream);
-
-            var response_text = new StringBuilder ();
-            string? line = null;
-            while ((line = yield data_stream.read_line_async (Priority.DEFAULT, null)) != null) {
-                response_text.append (line);
-            }
-            stream.close ();
-            data_stream.close ();
-
-            if (response_text.len == 0) {
-                throw new IOError.FAILED ("Location service returned empty data");
-            }
-
-            parse_location_response (response_text.str);
-
-        } catch (Error e) {
-            throw new IOError.FAILED ("Location service error: %s".printf (e.message));
-        }
-    }
-
-    /**
-     * Parses the JSON response returned by the location service.
-     */
-    private void parse_location_response (string json_text) throws IOError {
-        try {
+            var stream = yield file.read_async (Priority.DEFAULT, cancellable);
             var parser = new Json.Parser ();
-            parser.load_from_data (json_text);
+            yield parser.load_from_stream_async (stream, cancellable);
 
             var root_object = parser.get_root ().get_object ();
 
@@ -740,10 +723,42 @@ public class SolarAngleApp : Gtk.Application {
                 throw new IOError.FAILED ("No longitude in response data");
             }
 
+            double network_tz_offset = 0.0;
+            bool has_network_tz = false;
+
+            if (root_object.has_member ("utc_offset")) {
+                var offset_str = root_object.get_string_member ("utc_offset");
+                network_tz_offset = double.parse (offset_str) / 100.0;
+                has_network_tz = true;
+            }
+
             // Get the local timezone
             var timezone = new TimeZone.local ();
             var time_interval = timezone.find_interval (GLib.TimeType.UNIVERSAL, selected_date.to_unix ());
-            timezone_offset_hours = timezone.get_offset (time_interval) / 3600.0;
+            var local_tz_offset = timezone.get_offset (time_interval) / 3600.0;
+
+            const double TZ_EPSILON = 0.01; // Epsilon for floating point comparison
+            if (has_network_tz && (!(-TZ_EPSILON < (network_tz_offset - local_tz_offset) < TZ_EPSILON))) {
+                // Timezones differ, prompt user for a choice
+                var dialog = new Gtk.AlertDialog (
+                    "Timezone Mismatch: The timezone from the network (UTC%+.2f) differs from your system's timezone (UTC%+.2f).\n\nWhich one would you like to use?",
+                    network_tz_offset,
+                    local_tz_offset
+                );
+                dialog.set_buttons ({"Use Network Timezone", "Use System Timezone"});
+
+                // Asynchronously wait for the user's choice
+                var choice = yield dialog.choose (window, null);
+
+                if (choice == 0) {
+                    timezone_offset_hours = network_tz_offset;
+                } else {
+                    timezone_offset_hours = local_tz_offset;
+                }
+            } else {
+                // Network's timezone is the same as local's or unavailable
+                timezone_offset_hours = local_tz_offset;
+            }
 
             // Update UI on the main thread
             Idle.add (() => {
@@ -758,7 +773,7 @@ public class SolarAngleApp : Gtk.Application {
             });
 
         } catch (Error e) {
-            throw new IOError.FAILED ("Failed to parse location data: %s".printf (e.message));
+            throw new IOError.FAILED ("Failed to get location: %s", e.message);
         }
     }
 
